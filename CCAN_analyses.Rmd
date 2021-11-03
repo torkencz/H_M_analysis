@@ -1,0 +1,424 @@
+---
+title: "R CCAN analysee"
+output: html_notebook
+---
+
+
+
+
+Internal functions
+```{r}
+corrected_reads_CCAN<-function(object,assay,ccan,group_name,species=NULL){
+
+list_of_matrices=list()
+  
+if(is.null(species)) {
+species=c("mouse","human")
+}
+
+for (sp in species){
+#do it per species
+print(sp)
+object_sub<-subset(object,subset = species == paste0(sp))
+object_sub<-BinarizeCounts(object_sub)
+
+average_count_per_group<-AverageExpression(object = object_sub,assay = assay,slot = "counts",group.by = group_name)
+groups<-as.factor(object_sub[[]][,group_name])
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(object_sub$nFeature_cre),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`object_sub$nFeature_cre`))/log10(median_nfeature_category$`object_sub$nFeature_cre`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+
+return_matrix<-average_count_per_group$cre*t(replicate(dim(average_count_per_group$cre)[1],norm_factor$`median_nfeature_category$norm_complexity`))
+
+
+ccan$CCAN<-paste0("CCAN_",ccan$CCAN)
+ccan$Peak<-NULL
+return_matrix<-merge(return_matrix,ccan,by="row.names")
+row.names(return_matrix)<-return_matrix$Row.names
+return_matrix$Row.names<-NULL
+
+CCAN_groups<-as.factor(return_matrix$CCAN)
+return_matrix$CCAN<-NULL
+return_matrix<-aggregate(return_matrix,by=list(CCAN_groups),FUN = mean)
+
+
+list_of_matrices[[paste0(sp)]]=return_matrix
+}
+
+
+return(list_of_matrices)
+
+
+}
+
+```
+CCAN analyses
+```{r}
+
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+
+
+human<-readRDS("active_use_objects/Select_human_tissues.rds")
+mouse<-readRDS("active_use_objects/Select_mouse_tissues.rds")
+
+
+
+human
+mouse
+library(cicero)
+
+human<-readRDS("active_use_objects/Select_human_tissues.rds")
+mouse<-readRDS("active_use_objects/Select_mouse_tissues.rds")
+
+#hg38 human all
+human.cds <- as.cell_data_set(x = human)
+human.cicero <- make_cicero_cds(human.cds, reduced_coordinates = reducedDims(human.cds)$UMAP)
+genome <- seqlengths(human)
+# convert chromosome sizes to a dataframe
+genome.df <- data.frame("chr" = names(genome), "length" = genome)
+
+# run cicero
+conns_human <- run_cicero(human.cicero, genomic_coords = genome.df, sample_num = 100)
+write.table(conns_human,file="Human_connections_cicero.txt",sep = "\t",quote = F,row.names = T,col.names = T)
+
+ccans_human <- generate_ccans(conns_human,coaccess_cutoff_override = 0.15)
+ccans_human <- generate_ccans(conns_human)
+
+
+
+write.table(ccans_human,file="Human_ccans_cicero.txt",sep = "\t",quote = F,row.names = T,col.names = T)
+
+
+DefaultAssay(mouse)<-"mm9"
+#do same for moust but in mm9
+#mouse[["cre"]]<-NULL
+mouse[["cre05"]]<-NULL
+mouse[["cre99"]]<-NULL
+mouse[["Deviation_DA_mouse"]]<-NULL
+mouse[["Deviation_DA_human"]]<-NULL
+mouse[["Deviation_DA_int"]]<-NULL
+mouse[["chromvar"]]<-NULL
+mouse[["mm10"]]<-NULL
+
+#mm9 mouse but did it with hg38 as well
+mouse.cds <- as.cell_data_set(x = mouse)
+mouse.cicero <- make_cicero_cds(mouse.cds, reduced_coordinates = reducedDims(mouse.cds)$UMAP)
+genome <- seqlengths(mouse)
+# convert chromosome sizes to a dataframe
+genome.df <- data.frame("chr" = names(genome), "length" = genome)
+
+# run cicero
+conns_mouse <- run_cicero(mouse.cicero, genomic_coords = genome.df, sample_num = 100)
+write.table(conns_mouse,file="Mouse_connections_cicero.txt",sep = "\t",quote = F,row.names = T,col.names = T)
+
+#ccans_mouse <- generate_ccans(conns_mouse,coaccess_cutoff_override = 0.15)
+ccans_mouse <- generate_ccans(conns_mouse)
+
+
+write.table(ccans_mouse,file="Mouse_ccans_cicero.txt",sep = "\t",quote = F,row.names = T,col.names = T)
+
+load("active_use_objects/for_rahul/Shared.bw.species.DA.RData")
+load("active_use_objects/for_rahul/Human_only.bw.species.DA.RData")
+load("active_use_objects/for_rahul/Mouse_only.bw.species.DA.RData")
+
+
+all_human_peaks_in_CCAN<-unique(StringToGRanges(ccans_human$Peak))
+all_mouse_peaks_in_CCAN<-unique(StringToGRanges(ccans_mouse$Peak))
+all_peaks_human<-unique(StringToGRanges(row.names(human)))
+all_peaks_mouse<-unique(StringToGRanges(row.names(mouse)))
+
+
+#add links to human
+
+links <- ConnectionsToLinks(conns = conns_human, ccans = ccans_human)
+Links(human) <- links
+saveRDS(human,file = "./active_use_objects/Human_added_links.rds")
+
+links <- ConnectionsToLinks(conns = conns_mouse, ccans = ccans_mouse)
+Links(mouse) <- links
+saveRDS(mouse,file = "./active_use_objects/Mouse_added_links.rds")
+
+
+
+#hypergeom
+#easy hypergeom
+hypergeom_test=data.frame(celltype=character(),CCAN=character(),group=character(),hgtest=double())
+percent_overlap=data.frame(celltype=character(),CCAN=character(),group=character(),frac=double())
+for (i in names(shared_DA))
+{
+print(i)
+  print("shared")
+#shared DA sites
+querypos<-unique(StringToGRanges(sort(shared_DA[[i]]$feature_hg38_universal)))
+
+#human CCAN
+mpre<-suppressWarnings(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(all_peaks_human)))
+xpre<-suppressWarnings(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos)))
+m<-length(unique(queryHits(mpre)))
+x<-length(unique(queryHits(xpre)))
+
+print(paste0("Number of peaks in CCAN: ",m))
+print(paste0("Number of peaks not in CCAN: ",length(all_peaks_human)-m))
+print(paste0("Frac of peaks in CCAN/all peaks: ",m/length(all_peaks_human)))
+print(paste0("enrichment in shared: ",x))
+print(paste0("enrichment in shared/thousand DA peaks: ",x/1000))
+
+shared_sites_in_CCANS<-sort(querypos)[(queryHits(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos))))]
+CCAN_sites_in_sh_sites<-all_human_peaks_in_CCAN[(subjectHits(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos))))]
+sh<-data.frame(group="shared",celltype=i,CCAN="human",hgtest=(1-phyper(x-1,m,length(all_peaks_human)-m,length(querypos))))
+hypergeom_test<-rbind(hypergeom_test,sh)
+sh2<-data.frame(group="shared",celltype=i,CCAN="human",frac=x/1000*length(all_peaks_human)/m)
+percent_overlap<-rbind(percent_overlap,sh2)
+
+
+
+#mouse CCAN
+#shared DA sites
+querypos<-unique(StringToGRanges(sort(shared_DA[[i]]$feature_mm9_mouse)))
+mpre<-suppressWarnings(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(all_peaks_mouse)))
+xpre<-suppressWarnings(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos)))
+m<-length(unique(queryHits(mpre)))
+x<-length(unique(queryHits(xpre)))
+
+print(paste0("Number of peaks in CCAN: ",m))
+print(paste0("Number of peaks not in CCAN: ",length(all_peaks_mouse)-m))
+print(paste0("Frac of peaks in CCAN/all peaks: ",m/length(all_peaks_mouse)))
+print(paste0("enrichment in shared: ",x))
+print(paste0("enrichment in shared/thousand DA peaks: ",x/1000))
+
+
+
+shared_sites_in_CCANS<-sort(querypos)[(queryHits(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos))))]
+CCAN_sites_in_sh_sites<-all_mouse_peaks_in_CCAN[(subjectHits(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos))))]
+sh<-data.frame(group="shared",celltype=i,CCAN="mouse",hgtest=(1-phyper(x-1,m,length(all_peaks_mouse)-m,length(querypos))))
+hypergeom_test<-rbind(hypergeom_test,sh)
+sh2<-data.frame(group="shared",celltype=i,CCAN="mouse",frac=x/1000*length(all_peaks_human)/m)
+percent_overlap<-rbind(percent_overlap,sh2)
+
+
+#mouse DA sites
+querypos<-unique(StringToGRanges(sort(mouse_DA[[i]]$feature_hg38_universal)))
+
+#human CCAN
+mpre<-suppressWarnings(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(all_peaks_human)))
+xpre<-suppressWarnings(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos)))
+m<-length(unique(queryHits(mpre)))
+x<-length(unique(queryHits(xpre)))
+print("mouse DA human CCANS")
+print(paste0("enrichment in mouse DA: ",x))
+print(paste0("enrichment in mouse DA/thousand DA peaks: ",x/1000))
+print(paste0("Frac of peaks in CCAN/all peaks: ",m/length(all_peaks_human)))
+
+mouse_sites_in_CCANS<-sort(querypos)[(queryHits(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos))))]
+CCAN_sites_in_mouse_sites<-all_human_peaks_in_CCAN[(subjectHits(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos))))]
+sh<-data.frame(group="mouse",celltype=i,CCAN="human",hgtest=(1-phyper(x-1,m,length(all_peaks_human)-m,length(querypos))))
+hypergeom_test<-rbind(hypergeom_test,sh)
+sh2<-data.frame(group="mouse",celltype=i,CCAN="human",frac=x/1000*length(all_peaks_human)/m)
+percent_overlap<-rbind(percent_overlap,sh2)
+
+
+
+#mouse CCAN
+#mouse DA sites
+querypos<-unique(StringToGRanges(sort(mouse_DA[[i]]$feature_mm9_mouse)))
+mpre<-suppressWarnings(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(all_peaks_mouse)))
+xpre<-suppressWarnings(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos)))
+m<-length(unique(queryHits(mpre)))
+x<-length(unique(queryHits(xpre)))
+
+print("mouse DA mouse CCANS")
+print(paste0("enrichment in mouse DA: ",x))
+print(paste0("enrichment in mouse DA/thousand DA peaks: ",x/1000))
+print(paste0("Frac of peaks in CCAN/all peaks: ",m/length(all_peaks_mouse)))
+
+mouse_sites_in_CCANS<-sort(querypos)[(queryHits(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos))))]
+CCAN_sites_in_mouse_sites<-all_mouse_peaks_in_CCAN[(subjectHits(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos))))]
+sh<-data.frame(group="mouse",celltype=i,CCAN="mouse",hgtest=(1-phyper(x-1,m,length(all_peaks_mouse)-m,length(querypos))))
+hypergeom_test<-rbind(hypergeom_test,sh)
+sh2<-data.frame(group="mouse",celltype=i,CCAN="mouse",frac=x/1000*length(all_peaks_human)/m)
+percent_overlap<-rbind(percent_overlap,sh2)
+
+
+#human DA sites
+querypos<-unique(StringToGRanges(sort(human_DA[[i]]$feature_hg38_universal)))
+
+#human CCAN
+mpre<-suppressWarnings(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(all_peaks_human)))
+xpre<-suppressWarnings(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos)))
+m<-length(unique(queryHits(mpre)))
+x<-length(unique(queryHits(xpre)))
+
+print("human DA human CCANS")
+print(paste0("enrichment in human DA: ",x))
+print(paste0("enrichment in human DA/thousand DA peaks: ",x/1000))
+print(paste0("Frac of peaks in CCAN/all peaks: ",m/length(all_peaks_human)))
+
+human_sites_in_CCANS<-sort(querypos)[(queryHits(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos))))]
+CCAN_sites_in_human_sites<-all_human_peaks_in_CCAN[(subjectHits(findOverlaps(subject = all_human_peaks_in_CCAN,query = sort(querypos))))]
+sh<-data.frame(group="human",celltype=i,CCAN="human",hgtest=(1-phyper(x-1,m,length(all_peaks_human)-m,length(querypos))))
+hypergeom_test<-rbind(hypergeom_test,sh)
+sh2<-data.frame(group="human",celltype=i,CCAN="human",frac=x/1000*length(all_peaks_human)/m)
+percent_overlap<-rbind(percent_overlap,sh2)
+
+
+
+#mouse CCAN
+#human DA sites
+querypos<-unique(StringToGRanges(sort(human_DA[[i]]$feature_mm9_mouse)))
+mpre<-suppressWarnings(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(all_peaks_mouse)))
+xpre<-suppressWarnings(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos)))
+m<-length(unique(queryHits(mpre)))
+x<-length(unique(queryHits(xpre)))
+
+print("human DA mouse CCANS")
+print(paste0("enrichment in human DA: ",x))
+print(paste0("enrichment in human DA/thousand DA peaks: ",x/1000))
+print(paste0("Frac of peaks in CCAN/all peaks: ",m/length(all_peaks_mouse)))
+
+human_sites_in_CCANS<-sort(querypos)[(queryHits(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos))))]
+CCAN_sites_in_human_sites<-all_mouse_peaks_in_CCAN[(subjectHits(findOverlaps(subject = all_mouse_peaks_in_CCAN,query = sort(querypos))))]
+sh<-data.frame(group="human",celltype=i,CCAN="mouse",hgtest=(1-phyper(x-1,m,length(all_peaks_mouse)-m,length(querypos))))
+hypergeom_test<-rbind(hypergeom_test,sh)
+sh2<-data.frame(group="human",celltype=i,CCAN="mouse",frac=x/1000*length(all_peaks_human)/m)
+percent_overlap<-rbind(percent_overlap,sh2)
+
+}
+
+percent_overlap_m<-percent_overlap[which(percent_overlap$CCAN=="mouse"),]
+percent_overlap_h<-percent_overlap[which(percent_overlap$CCAN=="human"),]
+
+M<-t(scale(t(acast(percent_overlap_m, celltype~group, value.var="frac"))))
+H<-t(scale(t(acast(percent_overlap_h, celltype~group, value.var="frac"))))
+
+HM<-Heatmap(H)+Heatmap(M)
+
+write.table(percent_overlap,file="Percent_overlap_CCANs.txt",quote = F,sep = "\t",row.names = T,col.names = T)
+
+
+#this 
+
+human<-readRDS("./active_use_objects/Select_human_tissues.rds")
+mouse<-readRDS("./active_use_objects/Select_mouse_tissues.rds")
+ 
+human[["Deviation_DA_mouse"]]<-NULL
+human[["Deviation_DA_human"]]<-NULL
+human[["Deviation_DA_int"]]<-NULL
+human[["chromvar"]]<-NULL
+mouse[["Deviation_DA_mouse"]]<-NULL
+mouse[["Deviation_DA_human"]]<-NULL
+mouse[["Deviation_DA_int"]]<-NULL
+mouse[["mm9"]]<-NULL
+mouse[["mm10"]]<-NULL
+mouse[["cre05"]]<-NULL
+mouse[["cre99"]]<-NULL
+mouse[["chromvar"]]<-NULL
+human$species="human"
+mouse$species="mouse"
+
+H_M_merged_cre<-merge(human,mouse)
+
+
+ccans_human<-read.table("Human_ccans_cicero.txt")
+
+H_M_merged_cre$celltype<-Idents(H_M_merged_cre)
+
+human.cicero.ccan.aggregate<-corrected_reads_CCAN(object = H_M_merged_cre,assay = "cre",group_name = "celltype",ccan=ccans_human)
+
+hum<-human.cicero.ccan.aggregate$human
+row.names(hum)<-hum$Group.1
+hum$Group.1<-NULL
+
+mus<-human.cicero.ccan.aggregate$mouse
+row.names(mus)<-mus$Group.1
+mus$Group.1<-NULL
+
+H<-Heatmap(hum,show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE)
+H2<-Heatmap(t(scale(t(hum))),show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE,cluster_columns = F)
+
+M<-Heatmap(mus,show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE)
+M2<-Heatmap(t(scale(t(mus))),show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE,cluster_columns = F)
+
+s_h_ccan<-as.data.frame(t(scale(t(hum))))
+s_m_ccan<-as.data.frame(t(scale(t(mus))))
+
+correlates_CCAN_M_H<-cor(x=s_h_ccan,y=s_m_ccan,use = "complete.obs")
+
+Heatmap(correlates_CCAN_M_H,show_column_names = TRUE,show_row_names = TRUE,cluster_rows = TRUE,cluster_columns = T)
+
+CARD_order<-s_h_ccan$Cardiomyocytes-s_m_ccan$Cardiomyocytes
+CCANs_human_unique<-row.names(s_h_ccan[order(CARD_order,decreasing = T),]-s_m_ccan[order(CARD_order,decreasing = T),])
+CCAN_counts<-as.data.frame(table(ccans_human$CCAN))
+row.names(CCAN_counts)<-paste0("CCAN_CCAN_",CCAN_counts$Var1)
+
+CCAN_counts[match(CCANs_human_unique,row.names(CCAN_counts)),]
+
+
+CCANs_human_unique[]
+
+CARD_min<-which.min(s_h_ccan$Cardiomyocytes-s_m_ccan$Cardiomyocytes)
+
+s_h_ccan[CARD_max,]
+s_m_ccan[CARD_max,]
+
+s_h_ccan[CARD_min,]
+s_m_ccan[CARD_min,]
+
+#CCAN_CCAN_27
+#CCAN_29778
+
+CARD_reg_sub<-StringToGRanges(ccans_human[which(ccans_human$CCAN==27),1])
+CARD_reg<-StringToGRanges("chr1-101216546-101218131")
+ 
+
+  m_cov<-CoveragePlot(
+    object = mouse, 
+    region = CARD_reg,assay ="cre",
+    extend.upstream = 1000,
+    extend.downstream = 1000,annotation=T,peaks=T, region.highlight = CARD_reg_sub
+  )
+  
+h_cov<-CoveragePlot(
+    object = human, 
+    region = CARD_reg,assay ="cre",
+    extend.upstream = 1000,
+    extend.downstream = 1000,annotation=T,peaks=T, region.highlight = CARD_reg_sub
+  )
+  
+
+CARD_reg_sub<-StringToGRanges(ccans_human[which(ccans_human$CCAN==29778),1])
+CARD_reg<-StringToGRanges("chr6-72552870-72554535")
+ 
+
+  m_cov2<-CoveragePlot(
+    object = mouse, 
+    region = CARD_reg,assay ="cre",
+    extend.upstream = 1000,
+    extend.downstream = 1000,annotation=T,peaks=T, region.highlight = CARD_reg_sub
+  )
+  
+h_cov2<-CoveragePlot(
+    object = human, 
+    region = CARD_reg,assay ="cre",
+    extend.upstream = 1000,
+    extend.downstream = 1000,annotation=T,peaks=T, region.highlight = CARD_reg_sub
+  )
+
+
+
+
+s_h_ccan[CARD_max,]
+
+CARD_reg_sub<-StringToGRanges(ccans_human[which(ccans_human$CCAN==35177),1])
+CARD_reg<-StringToGRanges("chr9-73445370-73584010")
+ 
+
+```
+

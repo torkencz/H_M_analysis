@@ -690,19 +690,25 @@ validation_1<-DotPlot(human_pn_val,assay = "chromvar",features =  all[-c(31:39,5
 
 p_human_human_validation_plot<-p1_orig|validation_1
 
-#now make same thing for mouse
-
-
-
-
-
-p_human_human_validation_plot<-p1_orig|validation_1
 
 ggsave(p_human_human_validation_plot,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/human_human_validation_dotplot.pdf",width = 20,height = 7.5)
+
+
+
+#now make same thing for mouse
 
 levels(Idents(mouse_pn_val))
 levels(Idents(mouse_select_atac))
 
+mouse_in=c("B-lymphocytes", "Pneumocytes","T-lymphocytes","Fibroblasts","Macrophage_Monocyte_Neutrophils","Endothelial cells")
+mouse_in_orig=c("B-lymphocytes", "Pneumocytes","T-lymphocytes","Fibroblasts","Macrophages","Endothelial cells")
+
+
+Idents(mouse_pn_val)<-factor(Idents(mouse_pn_val),levels=c("B-lymphocytes","Pneumocytes","T-lymphocytes","Fibroblasts","Macrophage_Monocyte_Neutrophils","AVSM","Endothelial cells","Mesothelial","Pericytes"))
+
+p2_orig<-DotPlot(mouse_select_atac,idents = human_in_orig,assay = "chromvar",features =  all,cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human original") +ylab(label = "")
+
+features =  all[-c(31:39,57:61)]
 
 
 

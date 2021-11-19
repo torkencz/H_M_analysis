@@ -1,0 +1,562 @@
+---
+title: "Differential accessibility analysis"
+output: html_notebook
+---
+
+
+Read in the human and mouse datasets
+```{r}
+
+library(presto)
+library(Signac)
+library(Seurat)
+
+
+human_all_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
+mouse_select_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+
+```
+
+
+
+#running DA
+```{r}
+
+markers_h <- presto:::wilcoxauc.Seurat(X = human_all_atac,assay = 'data', seurat_assay = 'cre',min.pct = 0)
+markers_filt_h<-markers_h[markers_h$padj<0.05 & markers_h$logFC > 0,]
+
+markers_m <- presto:::wilcoxauc.Seurat(X = mouse_select_atac,assay = 'data', seurat_assay = 'cre',min.pct = 0)
+markers_filt_m<-markers_m[markers_m$padj<0.05 & markers_m$logFC > 0,]
+
+markers_m_mm9 <- presto:::wilcoxauc.Seurat(X = mouse_select_atac,assay = 'data', seurat_assay = 'mm9',min.pct = 0)
+markers_m_mm10 <- presto:::wilcoxauc.Seurat(X = mouse_select_atac,assay = 'data', seurat_assay = 'mm10',min.pct = 0)
+
+
+```
+
+
+#common da and species specific
+```{r}
+library("ggVennDiagram")
+da.peaks<-list()
+for (i in (levels(as.factor(markers_h$group))))
+  {
+  m_h<-filter(markers_filt_h,group==i)
+  m_m<-filter(markers_filt_m,group==i)
+  x=list(human=m_h$feature,mouse=m_m$feature)
+  da.peaks[[i]]<-ggVennDiagram(x)+ggtitle(label = i)
+  
+}
+
+wrap_plots(da.peaks,ncol=3,nrow = 5)
+
+
+
+hg38tomm9peaks<-read.table(file="/home/torkenczyk/H_M_chromatin_atlas/mouse_data/Mouse_hg38_0.1_peaks.bed",header = F)
+mm10tomm9peaks<-read.table(file="/home/torkenczyk/H_M_chromatin_atlas/mouse_data/Mouse_mm10_peaks.bed",header = F)
+hg38tomm9peaks$feature_hg38<-paste(hg38tomm9peaks$V1,hg38tomm9peaks$V2,hg38tomm9peaks$V3,sep = "-")
+
+mm10tomm9peaks$feature_mm10<-paste(mm10tomm9peaks$V1,mm10tomm9peaks$V2,mm10tomm9peaks$V3,sep = "-")
+mm10tomm9peaks$feature_mm9<-gsub(mm10tomm9peaks$V4,pattern = "_",replacement = "-")
+mm10tomm9peaks$V1<-NULL
+mm10tomm9peaks$V2<-NULL
+mm10tomm9peaks$V3<-NULL
+mm10tomm9peaks$V4<-NULL
+
+hg38tomm9peaks$feature_mm9<-gsub(hg38tomm9peaks$V4,pattern = "_",replacement = "-")
+hg38tomm9peaks$V1<-NULL
+hg38tomm9peaks$V2<-NULL
+hg38tomm9peaks$V3<-NULL
+hg38tomm9peaks$V4<-NULL
+
+
+hg38tomm9peaks<-merge(hg38tomm9peaks,mm10tomm9peaks,by="feature_mm9")
+
+mm9hg38logplots<-list()
+
+
+#between mm9 and hg38
+mousehumanlogplotsmm9<-list()
+#between hg38 and hg38
+mousehumanlogplotshg38<-list()
+mouse_DA<-list()
+human_DA<-list()
+shared_DA<-list()
+muse<-list()
+
+for (i in (levels(as.factor(markers_h$group))))
+  {
+  print(i)
+
+  m_h<-dplyr::filter(markers_h,group==i)
+  m_m<-dplyr::filter(markers_m,group==i)
+  m_m9<-dplyr::filter(markers_m_mm9,group==i)
+  m_m9$feature_mm9=m_m9$feature
+  m_m9<-merge(x=m_m9,y=hg38tomm9peaks,by="feature_mm9")
+  m_m9$feature<-m_m9$feature_hg38
+  
+  matched<-findOverlaps(query=StringToGRanges(m_m9$feature),subject=StringToGRanges(m_m$feature))
+  matched2<-findOverlapPairs(StringToGRanges(m_m9$feature),StringToGRanges(m_m$feature))
+  #most 1on1 table(table(subjectHits(matched))>1) FALSE  196781 TRUE    8957 
+  #most 1on1 table(table(queryHits(matched))>1) FALSE  123577 TRUE    39548 
+  #matched2[as.vector(table(subjectHits(matched))>1) | as.vector(table(queryHits(matched))>1),]
+  m_m9<-m_m9[queryHits(matched),]
+  m_m9$feature_hg38matched<-m_m$feature[subjectHits(matched)]
+  m_m9$logFC_hg38matched<-m_m$logFC[subjectHits(matched)]
+  m_m9$avgExpr_hg38matched<-m_m$avgExpr[subjectHits(matched)]
+  m_m9$auc_hg38matched<-m_m$auc[subjectHits(matched)]
+  m_m9$padj_hg38matched<-m_m$padj[subjectHits(matched)]
+  m_m9$pct_in_hg38matched<-m_m$pct_in[subjectHits(matched)]
+  m_m9$pct_out_hg38matched<-m_m$pct_out[subjectHits(matched)]
+  
+  #first let us see if these values correlate
+  mm9hg38logplots[[i]]<-ggplot(m_m9,aes(y=logFC_hg38matched,x=logFC))+geom_point()+theme_classic()+ggtitle(i)+ylab("hg38 calculated logFC")+xlab("mm9 calculated logFC")
+  m_m9$feature<-m_m9$feature_hg38matched
+  
+  mu<-merge(x=m_m9,y=m_h,by="feature",all.x=T)
+  mu<-mu[with(mu, order(-logFC.x)),]
+  mu$rank.mouse<-c(1:length(mu$logFC.x))
+  mu<-mu[with(mu, order(-logFC.y)),]
+  mu$rank.human=c(1:length(mu$logFC.y))
+  #this is a rough ordering
+  mu$rankavg<-(mu$rank.mouse+mu$rank.human)/2
+  mu$rankdiff.mouse<-mu$rank.mouse-mu$rank.human
+  mu$rankdiff.human<-mu$rank.human-mu$rank.mouse
+  if(i=="Schwann_cells" )
+  {
+  top_num_peaks=700
+  }else{top_num_peaks=1000}
+  mu<-mu[mu$padj.x<0.05 | mu$padj.y<0.05 | mu$padj_hg38matched<0.05,]
+  mu<-mu[with(mu, order(rankavg)),]
+  mu$category<-c(rep("shared",times=top_num_peaks),rep("other",times=length(mu$feature_mm9)-top_num_peaks))
+  mu<-mu[with(mu, order(rank.human)),]
+  mu$category[head(which(mu$category != "shared" & mu$logFC.y > 0 & mu$padj.x > 0.000001),n=top_num_peaks)]<-rep("human",times=top_num_peaks)
+  mu<-mu[with(mu, order(rank.mouse)),]
+  mu$category[head(which(mu$category != "shared" & mu$logFC.x > 0 & mu$category != "human" & mu$padj.y > 0.000001),n=top_num_peaks)]<-rep("mouse",times=top_num_peaks)
+  
+  
+  #first let us see if these values correlate
+  mousehumanlogplotsmm9[[i]]<-ggplot(mu,aes(x=logFC.x,y=logFC.y,color=category))+geom_point()+theme_classic()+ggtitle(i)+ylab("Human logFC")+xlab("Mouse mm9 calculated logFC")
+  
+  #first let us see if these values correlate
+  mousehumanlogplotshg38[[i]]<-ggplot(mu,aes(x=logFC_hg38matched,y=logFC.y,color=category))+geom_point()+theme_classic()+ggtitle(i)+ylab("Human logFC")+xlab("Mouse hg38 calculated logFC")
+  
+  mouse_DA[[i]]<- mu[which(mu$category=="mouse"),]
+  human_DA[[i]]<- mu[which(mu$category=="human"),]
+  shared_DA[[i]]<- mu[which(mu$category=="shared"),]
+  
+  #what if we divide into quartiles (will be percetile)
+  
+  mu$m_quantile <- with(mu, factor(findInterval( logFC_hg38matched, c(-Inf,
+                               quantile(logFC_hg38matched, probs=c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9)), Inf)), labels=c("M1","M2","M3","M4","M5","M6","M7","M8","M9","M10")))
+  
+  mu$h_quantile <- with(mu, factor(findInterval( logFC.y, c(-Inf,
+                               quantile(logFC.y, probs=c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9)), Inf)), labels=c("H1","H2","H3","H4","H5","H6","H7","H8","H9","H10")))
+  
+  mu$quantile_comb<-paste(mu$m_quantile,mu$h_quantile,sep = "_")
+ 
+  muse[[i]]=mu
+  
+  
+  
+}
+
+
+wrap_plots(mousehumanlogplotsmm9,ncol=4,nrow = 4)
+wrap_plots(mousehumanlogplotshg38,ncol=4,nrow = 3)
+
+
+ClosestFeature(mouse_select_atac,regions = pn_m$feature)
+
+ClosestFeature(human_all_atac,regions = shared_DA$`Smooth muscle cells`$feature)
+ho<-ClosestFeature(human_all_atac,regions = human_DA$`Smooth muscle cells`$feature)
+mo<-ClosestFeature(human_all_atac,regions = mouse_DA$`Smooth muscle cells`$feature)
+
+
+
+p1<-plot_combined_cross_species(gene = "SPARC")
+p2<-plot_combined_cross_species(gene = "MPRIP")
+p3<-plot_combined_cross_species(gene = "MPRIP")
+p3<-plot_combined_cross_species(gene = "CNN1")
+p3<-plot_combined_cross_species(gene = "MYH11")
+
+p3<-plot_combined_cross_species(gene = "ZFHX3")
+p3<-plot_combined_cross_species(gene = "TAGLN")
+p3<-plot_combined_cross_species(gene = "SEPT9")
+
+
+#this was only for the writeout downstream we should stick to the original
+
+for (i in (levels(as.factor(markers_h$group))))
+  {
+  a<-names(human_DA[[i]])
+  a<-gsub(a,pattern = "\\.x",replacement = ".mm9")
+  a<-gsub(a,pattern = "feature_hg38",replacement = "mm9_lifted_hg38peak")
+  a<-gsub(a,pattern = "feature_mm10",replacement = "mm9_lifted_mm10peak")
+  a<-gsub(a,pattern = "feature_mm10",replacement = "mm9_lifted_mm10peak")
+  a<-gsub(a,pattern = "\\.y",replacement = ".hg38")
+  
+  a<-paste(a,c("hg38_universal",rep("mouse",times=19),rep("human",times=9),rep("categorization",times=6)),sep = "_")
+  names(human_DA[[i]])<-a
+  names(shared_DA[[i]])<-a
+  names(mouse_DA[[i]])<-a
+  
+}
+
+
+
+save(shared_DA, file="active_use_objects/for_rahul/Shared.RData")
+
+save(shared_DA, file="active_use_objects/for_rahul/Shared.bw.species.DA.RData")
+save(mouse_DA, file="active_use_objects/for_rahul/Mouse_only.bw.species.DA.RData")
+save(human_DA, file="active_use_objects/for_rahul/Human_only.bw.species.DA.RData")
+```
+
+
+
+#confirm overlap
+```{r}
+PNmm9<-shared_DA$Pneumocytes$feature_mm9_mouse
+PNmm9_m<-mouse_DA$Pneumocytes$feature_mm9_mouse
+PNmm9_h<-human_DA$Pneumocytes$feature_mm9_mouse
+
+
+int_bed<-data.frame(chr=str_split_fixed(PNmm9,"-",n=3)[,1],start=str_split_fixed(PNmm9,"-",n=3)[,2],end=str_split_fixed(PNmm9,"-",n=3)[,3])
+write.table(int_bed,file = "/home/torkenczyk/LD/celltype_bedfiles/Shared2celline.mm9.Pneumocytes.bed",quote = F,sep = "\t",row.names = F,col.names = F)
+
+
+int_bed<-data.frame(chr=str_split_fixed(PNmm9_h,"-",n=3)[,1],start=str_split_fixed(PNmm9_h,"-",n=3)[,2],end=str_split_fixed(PNmm9_h,"-",n=3)[,3])
+write.table(int_bed,file = "/home/torkenczyk/LD/celltype_bedfiles/Uniq2celline.h.mm9.Pneumocytes.bed",quote = F,sep = "\t",row.names = F,col.names = F)
+
+
+int_bed<-data.frame(chr=str_split_fixed(PNmm9_m,"-",n=3)[,1],start=str_split_fixed(PNmm9_m,"-",n=3)[,2],end=str_split_fixed(PNmm9_m,"-",n=3)[,3])
+write.table(int_bed,file = "/home/torkenczyk/LD/celltype_bedfiles/Uniq2celline.m.mm9.Pneumocytes.bed",quote = F,sep = "\t",row.names = F,col.names = F)
+
+filecount = "/home/torkenczyk/H_M_chromatin_atlas/human_data/verify_peaks/Mouse/ATACseq_Matrix/chromatin.accessibility.raw.count.txt"
+
+#this analysis is in that folder
+
+
+#scATAC-seq analysis
+
+lung_extra<-Read10X_h5(filename = "verify_peaks/Mouse/GSM4795059_7wk-scATAC_filtered_peak_bc_matrix.h5")
+a<-read10xCounts("verify_peaks/GSM4795059_7wk-scATAC_filtered_peak_bc_matrix.h5")
+library(DropletUtils)
+
+
+DefaultAssay(mouse_select_atac)<-"mm10"
+
+peaks_mm10<-row.names(mouse_select_atac)
+granges_mm10<-StringToGRanges(peaks_mm10)
+file_mouseval<-'verify_peaks/Mouse/GSM4795059_7wk-scATAC_fragments.tsv.gz'
+frags_mm10 <- CreateFragmentObject(
+  path = file_mouseval, 
+  validate.fragments = TRUE
+)
+cRE_peaks_mm10<- FeatureMatrix(
+  fragments = frags_mm10,
+  features = granges_mm10,
+)
+
+# I did not quantify but could technically call peaks -> just did
+
+
+# extract gene annotations from EnsDb
+annotations_mouse_mm10 <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+# change to UCSC style since the data was mapped to mm
+seqlevelsStyle(annotations_mouse_mm10) <- 'UCSC'
+genome(annotations_mouse_mm10) <- "mm10"
+
+
+mouse_select_atac[["mm10"]]<-CreateChromatinAssay(
+  counts = cRE_peaks_mm10,
+  genome = "mm10",
+  ranges = mm10_peaks_granges,min.cells = 1,fragments = mm10_frags,annotation = annotations_mouse_mm10
+)
+
+
+
+
+
+
+```
+
+#conservation of these site
+
+```{r}
+
+#check for conservation
+bigwig<-"~/conservation_tracks/hg38.mm10.LECIF.srt.median.bw"
+bigwig<-"~/conservation_tracks/hg38.phyloP100way.bw"
+bigwig<-"~/conservation_tracks/hg38.phastCons100way.bw"
+#check for unique mapping
+bigwig<-"~/mappability_tracks/k50.Umap.MultiTrackMappability.bw"
+
+region_value<-function(x){median(rtracklayer::import(con = bigwig,which = StringToGRanges(x),as = "NumericList")[[1]])}
+vregvalue<-Vectorize(region_value,"x")
+
+
+median_cons_reg_score<-list()
+median_uniq_reg_score_h<-list()
+median_uniq_reg_score_m<-list()
+
+
+for (ct in levels(as.factor(markers_h$group))){
+print(ct)
+clusth<-human_DA[[ct]]$feature  
+clustm<-mouse_DA[[ct]]$feature  
+int_ist<-shared_DA[[ct]]$feature
+int_ist<-unique(GRangesToString(sort(StringToGRanges(int_ist))))
+int_bed<-data.frame(chr=str_split_fixed(int_ist,"-",n=3)[,1],start=str_split_fixed(int_ist,"-",n=3)[,2],end=str_split_fixed(int_ist,"-",n=3)[,3])
+write.table(int_bed,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Shared2celline.",ct,".bed"),quote = F,sep = "\t",row.names = F,col.names = F)
+unint_ist_m<-unique(GRangesToString(sort(StringToGRanges(clustm))))
+unint_ist_h<-unique(GRangesToString(sort(StringToGRanges(clusth))))
+
+unint_ist_m<-unint_ist_m[which(seqnames(StringToGRanges(unint_ist_m))!="chrY")]
+unint_ist_h<-unint_ist_h[which(seqnames(StringToGRanges(unint_ist_h))!="chrY")]
+
+
+
+unintint_bed_h<-data.frame(chr=str_split_fixed(unint_ist_m,"-",n=3)[,1],start=str_split_fixed(unint_ist_m,"-",n=3)[,2],end=str_split_fixed(unint_ist_m,"-",n=3)[,3])
+unintint_bed_m<-data.frame(chr=str_split_fixed(unint_ist_h,"-",n=3)[,1],start=str_split_fixed(unint_ist_h,"-",n=3)[,2],end=str_split_fixed(unint_ist_h,"-",n=3)[,3])
+write.table(unintint_bed_h,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Uniq2celline.h.",ct,".bed"),quote = F,sep = "\t",row.names = F,col.names = F)
+write.table(unintint_bed_m,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Uniq2celline.m.",ct,".bed"),quote = F,sep = "\t",row.names = F,col.names = F)
+print(length(unint_ist_h))
+print(length(unint_ist_m))
+print(length(int_ist))
+
+#B_cells Cardiomyocytes Endothelial_cells Enterocytes Fibroblasts Goblet_cells Hepatocytes Macrophages Myofibroblasts Pneumocytes Schwann_cells
+
+print("intersecting")
+median_cons_reg_score[[ct]]<-vregvalue(int_ist)
+print("Mouse")
+median_uniq_reg_score_m[[ct]]<-vregvalue(unint_ist_m)
+
+print("Human")
+median_uniq_reg_score_h[[ct]]<-vregvalue(unint_ist_h)
+}
+
+
+
+
+top_1000_cons<-list()
+for (ct in levels(as.factor(markers_h$group))){
+a<-data.frame(score=median_cons_reg_score[[ct]],annot=rep("Conserved",times=length(median_cons_reg_score[[ct]])),celltype=rep(ct,times=length(median_cons_reg_score[[ct]])))
+b<-data.frame(score=median_uniq_reg_score_m[[ct]],annot=rep("Mouse",times=length(median_uniq_reg_score_m[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_m[[ct]])))
+c<-data.frame(score=median_uniq_reg_score_h[[ct]],annot=rep("Human",times=length(median_uniq_reg_score_h[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_h[[ct]])))
+top_1000_cons[[ct]]<-rbind(a,b,c)
+}
+
+top_1000_cons_df<-Reduce(rbind,top_1000_cons)
+
+
+mapp<-ggplot(top_1000_cons_df,aes(y=score,x=celltype,fill=annot))+geom_boxplot()+theme_classic()
+write.table(top_1000_cons_df,row.names = T,col.names = T,sep="\t",quote=F,file = "Phylop_cons_1000.sites.txt")
+write.table(top_1000_cons_df,row.names = T,col.names = T,sep="\t",quote=F,file = "Phast_cons_1000.sites.txt")
+```
+
+
+#now test if these DA sites are really DA
+```{r}
+library(chromVAR)
+library(motifmatchr)
+library(Matrix)
+library(SummarizedExperiment)
+library(BiocParallel)
+library("BSgenome.Hsapiens.UCSC.hg38")
+set.seed(2017)
+
+#human_all_atac<-readRDS("/home/torkenczyk/Human_only_minimal_for_DA.rds")
+#mouse_select_atac<-readRDS("/home/torkenczyk/Mouse_only_minimal_for_DA.rds")
+have_reads_h<-human_all_atac[["cre"]][[]][human_all_atac[["cre"]][[]]$count>0,]
+have_reads_m<-mouse_select_atac[["cre"]][[]][mouse_select_atac[["cre"]][[]]$count>0,]
+#have_reads_m<-mouse_select_atac2[["peaks"]][[]][mouse_select_atac2[["peaks"]][[]]$count>0,] #if MM9
+
+
+human_matched_h_hash<-list()
+human_matched_m_hash<-list()
+mouse_matched_m_hash<-list()
+mouse_matched_h_hash<-list()
+human_inters_matched_hash<-list()
+mouse_inters_matched_hash<-list()
+
+for (i in (levels(as.factor(markers_h$group)))) {
+#clusth<-da.filt.human[da.filt.human$group==i,]$feature
+#clustm<-da.filt.mouse[da.filt.mouse$group==i,]$feature
+#hmatched<-row.names(have_reads_h) %in% clusth 
+#mmatched<-row.names(have_reads_m) %in% clustm
+#hda<-da.filt.human[da.filt.human$group==i,]
+#mda<-da.filt.mouse[da.filt.mouse$group==i,]
+#clusth<-head(hda[with(hda, order(-logFC)),],n=1000)$feature
+#clustm<-head(mda[with(mda, order(-logFC)),],n=1000)$feature
+
+
+#unint_ist_m<-subset(clustm, !(clustm %in% clusth))
+#unint_ist_h<-subset(clusth, !(clusth %in% clustm))
+
+unint_ist_m<-mouse_DA[[i]]$feature
+unint_ist_h<-human_DA[[i]]$feature # IF orig
+
+#unint_ist_m<-mouse_DA[[i]]$feature_mm9 # IF MM9
+#unint_ist_h<-human_DA[[i]]$feature_mm9 # IF MM9
+
+hmatched<-row.names(have_reads_h) %in% unint_ist_h
+hmatched_m<-row.names(have_reads_h) %in% unint_ist_m
+mmatched<-row.names(have_reads_m) %in% unint_ist_m
+mmatched_h<-row.names(have_reads_m) %in% unint_ist_h
+
+#himatched<-row.names(have_reads_h) %in% intersect(clusth,clustm)
+himatched<-row.names(have_reads_h) %in% shared_DA[[i]]$feature
+#mimatched<-row.names(have_reads_m) %in% intersect(clusth,clustm)
+
+#mimatched<-row.names(have_reads_m) %in% shared_DA[[i]]$feature_mm9  #IF mm9
+mimatched<-row.names(have_reads_m) %in% shared_DA[[i]]$feature
+
+human_matched_h_hash[[i]]<-hmatched
+human_matched_m_hash[[i]]<-hmatched_m
+mouse_matched_m_hash[[i]]<-mmatched
+mouse_matched_h_hash[[i]]<-mmatched_h
+
+human_inters_matched_hash[[i]]<-himatched
+mouse_inters_matched_hash[[i]]<-mimatched
+}
+
+
+
+human_matched_h_df <- data.frame(matrix(unlist(human_matched_h_hash), ncol =length(human_matched_h_hash)))
+names(human_matched_h_df)<-names(human_matched_h_hash)
+human_matched_m_df <- data.frame(matrix(unlist(human_matched_m_hash), ncol =length(human_matched_m_hash)))
+names(human_matched_m_df)<-names(human_matched_m_hash)
+mouse_matched_m_df <- data.frame(matrix(unlist(mouse_matched_m_hash), ncol=length(mouse_matched_m_hash)))
+names(mouse_matched_m_df)<-names(mouse_matched_m_hash)
+mouse_matched_h_df <- data.frame(matrix(unlist(mouse_matched_h_hash), ncol=length(mouse_matched_h_hash)))
+names(mouse_matched_h_df)<-names(mouse_matched_h_hash)
+
+
+#now intersected
+human_inters_matched_df <- data.frame(matrix(unlist(human_inters_matched_hash), ncol =length(human_inters_matched_hash)))
+names(human_inters_matched_df)<-names(human_inters_matched_hash)
+mouse_inters_matched_df <- data.frame(matrix(unlist(mouse_inters_matched_hash), ncol=length(mouse_inters_matched_hash)))
+names(mouse_inters_matched_df)<-names(mouse_inters_matched_hash)
+
+
+#human in human
+rowRanges<-StringToGRanges(row.names(have_reads_h))
+anno_h_h <- getAnnotations(annotations = human_matched_h_df, rowRanges = rowRanges)
+fragments_h <- SummarizedExperiment(assays = list(counts = GetAssayData(human_all_atac, assay = "cre", slot = "counts")[row.names(have_reads_h),]), rowRanges = rowRanges)
+fragments_h <- filterPeaks(fragments_h, non_overlapping = TRUE)
+fragments_h <- addGCBias(fragments_h, genome = BSgenome.Hsapiens.UCSC.hg38)
+dev_h_h <- computeDeviations(object = fragments_h, annotations = anno_h_h)
+
+#human in mouse
+rowRanges<-StringToGRanges(row.names(have_reads_h))
+anno_h_m <- getAnnotations(annotations = human_matched_m_df, rowRanges = rowRanges)
+fragments_h <- SummarizedExperiment(assays = list(counts = GetAssayData(human_all_atac, assay = "cre", slot = "counts")[row.names(have_reads_h),]), rowRanges = rowRanges)
+fragments_h <- filterPeaks(fragments_h, non_overlapping = TRUE)
+fragments_h <- addGCBias(fragments_h, genome = BSgenome.Hsapiens.UCSC.hg38)
+dev_h_m <- computeDeviations(object = fragments_h, annotations = anno_h_m)
+
+#in case runs mm9
+#dev_h_h<-dev_h
+#dev_h_m<-dev_h
+
+#human mouse intersect
+rowRanges<-StringToGRanges(row.names(have_reads_h))
+anno_h <- getAnnotations(annotations = human_inters_matched_df, rowRanges = rowRanges)
+fragments_h <- SummarizedExperiment(assays = list(counts = GetAssayData(human_all_atac, assay = "cre", slot = "counts")[row.names(have_reads_h),]), rowRanges = rowRanges)
+fragments_h <- filterPeaks(fragments_h, non_overlapping = TRUE)
+fragments_h <- addGCBias(fragments_h, genome = BSgenome.Hsapiens.UCSC.hg38)
+dev_h_i <- computeDeviations(object = fragments_h, annotations = anno_h)
+
+#mouse in mouse
+
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m_m <- getAnnotations(annotations = mouse_matched_m_df, rowRanges = rowRanges)
+#mouse select atac2 if mm9
+#fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(mouse_select_atac2, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(mouse_select_atac, assay = "cre", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+#fragments_m <- addGCBias(fragments_m, genome = BSgenome.Mmusculus.UCSC.mm9)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg38)
+dev_m_m <- computeDeviations(object = fragments_m, annotations = anno_m_m)
+#dev_m_m<-dev_m
+#dev_m_h<-dev_m
+
+#mouse in human
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m_h <- getAnnotations(annotations = mouse_matched_h_df, rowRanges = rowRanges)
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(mouse_select_atac, assay = "cre", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+#fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(mouse_select_atac2, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+#fragments_m <- addGCBias(fragments_m, genome = BSgenome.Mmusculus.UCSC.mm9)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg38)
+dev_m_h <- computeDeviations(object = fragments_m, annotations = anno_m_h)
+
+#intersecting in mouse
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m <- getAnnotations(annotations = mouse_inters_matched_df, rowRanges = rowRanges)
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(mouse_select_atac, assay = "cre", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+#fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(mouse_select_atac2, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+#fragments_m <- addGCBias(fragments_m, genome = BSgenome.Mmusculus.UCSC.mm9)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg38)
+dev_m_i <- computeDeviations(object = fragments_m, annotations = anno_m)
+
+
+
+chromvar.hz <- SummarizedExperiment::assays(dev_h_m)[[2]]
+#rownames(x = chromvar.hz) <- colnames(x = anno_h)
+human_all_atac[["Deviation_DA_mouse"]] <- CreateAssayObject(data = chromvar.hz)
+chromvar.hz <- SummarizedExperiment::assays(dev_h_h)[[2]]
+#rownames(x = chromvar.hz) <- colnames(x = anno_h)
+human_all_atac[["Deviation_DA_human"]] <- CreateAssayObject(data = chromvar.hz)
+
+
+
+
+DefaultAssay(human_all_atac)<- "Deviation_DA_human"
+p1<-RidgePlot(human_all_atac, features = row.names(human_all_atac), ncol = 4)
+DefaultAssay(human_all_atac)<- "Deviation_DA_mouse"
+p2<-RidgePlot(human_all_atac, features = row.names(human_all_atac), ncol = 4)
+#
+pdf(file = "./plots/Deviation_DA_human_in_human.pdf",width = 30,height=25)
+p1
+dev.off()
+
+pdf(file= "./plots/Deviation_DA_mouse_in_human.pdf",width = 30,height=25)
+p2
+dev.off()
+
+
+chromvar.hz <- SummarizedExperiment::assays(dev_m_m)[[2]]
+#rownames(x = chromvar.hz) <- colnames(x = anno_h)
+mouse_select_atac[["Deviation_DA_mouse"]] <- CreateAssayObject(data = chromvar.hz)
+chromvar.hz <- SummarizedExperiment::assays(dev_m_h)[[2]]
+mouse_select_atac[["Deviation_DA_human"]] <- CreateAssayObject(data = chromvar.hz)
+
+DefaultAssay(mouse_select_atac)<-"Deviation_DA_mouse"
+p1b<-RidgePlot(mouse_select_atac, features = row.names(human_all_atac), ncol = 4)
+DefaultAssay(mouse_select_atac)<-"Deviation_DA_human"
+p2b<-RidgePlot(mouse_select_atac, features = row.names(human_all_atac), ncol = 4)
+
+
+chromvar.hz <- SummarizedExperiment::assays(dev_h_i)[[2]]
+#rownames(x = chromvar.hz) <- colnames(x = anno_h)
+human_all_atac[["Deviation_DA_int"]] <- CreateAssayObject(data = chromvar.hz)
+
+chromvar.hz <- SummarizedExperiment::assays(dev_m_i)[[2]]
+#rownames(x = chromvar.hz) <- colnames(x = anno_h)
+mouse_select_atac[["Deviation_DA_int"]] <- CreateAssayObject(data = chromvar.hz)
+
+DefaultAssay(mouse_select_atac)<-"Deviation_DA_int"
+
+p1c<-RidgePlot(mouse_select_atac, features = row.names(mouse_select_atac), ncol = 4)
+
+DefaultAssay(human_all_atac)<-"Deviation_DA_int"
+
+p2c<-RidgePlot(human_all_atac, features = row.names(human_all_atac), ncol = 4)
+
+p1
+
+
+```

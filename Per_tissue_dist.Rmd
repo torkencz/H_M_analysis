@@ -1,0 +1,665 @@
+---
+title: "Per_tissue_dist"
+author: "Kristof Torkenczy"
+date: "11/15/2021"
+output: html_document
+---
+
+PER tissue distance analyses
+```{r}
+#analysis of per tissue discance
+library(lsa)
+library(reshape2)
+median_nfeature_category_human<-aggregate(as.data.frame(human_all_atac$nFeature_cre),by=list(human_all_atac$handannot),FUN=median)
+median_nfeature_category_mouse<-aggregate(as.data.frame(mouse_select_atac$nFeature_mm9),by=list(mouse_select_atac$handannot),FUN=median)
+median_nfeature_category_mouse2<-aggregate(as.data.frame(mouse_select_atac$nFeature_cre),by=list(mouse_select_atac$handannot),FUN=median)
+
+
+human_list_distances<-list()
+mouse_list_distances<-list()
+mouse_list_distances_h<-list()
+for (i in levels(as.factor(Idents(human_all_atac))))
+{
+print(i)
+g_h<-WhichCells(human_all_atac,idents = i)
+DefaultAssay(human_all_atac)<-"cre"
+h_s_o<-subset(human_all_atac,cells = g_h)
+
+h_s_o <- RunTFIDF(h_s_o)
+h_s_o <- FindTopFeatures(h_s_o, min.cutoff = 'q50')
+h_s_o <- RunSVD(h_s_o)
+h_s_o <- FindNeighbors(object = h_s_o, reduction = 'lsi', dims = 2:30)
+h_s_o <- FindClusters(object = h_s_o, verbose = FALSE, algorithm = 3)
+
+cat_med_h<-median(h_s_o$nFeature_cre)
+
+h_s_o<-BinarizeCounts(h_s_o,assay = "cre")
+
+h_sum<-as.vector(table(Idents(h_s_o)))
+h_sum<-t(replicate(h_sum,n = length(row.names(h_s_o))))
+
+h_s_o<-AggregateExpression(h_s_o,assays = "cre",slot = "counts")
+h_s_o<-h_s_o$cre/h_sum
+#now correct for complexity by multiplying with factor
+
+correction_h<-mean(log10(median_nfeature_category_human$`human_all_atac$nFeature_cre`))/log10(cat_med_h)
+
+human_list_distances[[i]]<-h_s_o*correction_h
+
+
+
+#here you could binarize and calc the jaccard dist but let us stick to simple eucledean
+#h_s_o2<-as.matrix((h_s_o > 0.01) + 0)
+#dist(t(h_s_o))
+
+colnames(h_s_o)<-paste0(i,"_",colnames(h_s_o))
+
+
+DefaultAssay(mouse_select_atac)<-"mm9"
+g_m<-WhichCells(mouse_select_atac,idents = i)
+m_s_o<-subset(mouse_select_atac,cells = g_m)
+m_s_o <- RunTFIDF(m_s_o)
+m_s_o <- FindTopFeatures(m_s_o, min.cutoff = 'q50')
+m_s_o <- RunSVD(m_s_o)
+m_s_o <- FindNeighbors(object = m_s_o, reduction = 'lsi', dims = 2:30)
+m_s_o <- FindClusters(object = m_s_o, verbose = FALSE, algorithm = 3)
+
+cat_med_m<-median(m_s_o$nFeature_mm9)
+cat_med_m2<-median(m_s_o$nFeature_cre)
+
+m_s_o2<-m_s_o
+m_s_o<-BinarizeCounts(m_s_o,assay = "mm9")
+
+DefaultAssay(m_s_o2)<-"cre"
+m_s_o2<-BinarizeCounts(m_s_o2,assay = "cre")
+
+m_sum<-as.vector(table(Idents(m_s_o)))
+m_sum<-t(replicate(m_sum,n = length(row.names(m_s_o))))
+
+m_sum2<-as.vector(table(Idents(m_s_o2)))
+m_sum2<-t(replicate(m_sum2,n = length(row.names(m_s_o2))))
+
+
+m_s_o<-AggregateExpression(m_s_o,assays = "mm9",slot = "counts")
+m_s_o2<-AggregateExpression(m_s_o2,assays = "cre",slot = "counts")
+
+m_s_o<-m_s_o$mm9/m_sum
+m_s_o2<-m_s_o2$cre/m_sum2
+
+correction_m<-mean(log10(median_nfeature_category_mouse$`mouse_select_atac$nFeature_mm9`))/log10(cat_med_m)
+correction_m2<-mean(log10(median_nfeature_category_mouse2$`mouse_select_atac$nFeature_cre`))/log10(cat_med_m2)
+
+mouse_list_distances[[i]]<-m_s_o*correction_m
+mouse_list_distances_h[[i]]<-m_s_o2*correction_m2
+
+}
+
+
+
+
+#calculate within distances and then compare
+expand.grid.unique <- function(x, y, include.equals=FALSE)
+{
+    x <- unique(x)
+
+    y <- unique(y)
+
+    g <- function(i)
+    {
+        z <- setdiff(y, x[seq_len(i-include.equals)])
+
+        if(length(z)) cbind(x[i], z, deparse.level=0)
+    }
+
+    do.call(rbind, lapply(seq_along(x), g))
+}
+
+#THIS IS WHERE HM starts from
+
+#calculate distance between MH with original labels human
+human_list_distances_orig<-list()
+Idents(human_all_atac)<-human_all_atac$celltype
+median_nfeature_category_human<-aggregate(as.data.frame(human_all_atac$nFeature_cre),by=list(human_all_atac$celltype),FUN=median)
+for (i in levels(as.factor(human_all_atac$celltype)))
+{
+print(i)
+g_h<-WhichCells(human_all_atac,idents = i)
+h_s_o<-subset(human_all_atac,cells = g_h)
+cat_med_h<-median(h_s_o$nFeature_cre)
+h_s_o<-BinarizeCounts(h_s_o,assay = "cre")
+h_sum<-as.vector(table(Idents(h_s_o)))
+h_sum<-replicate(h_sum,n = length(row.names(h_s_o)))
+h_s_o<-AggregateExpression(h_s_o,assays = "cre",slot = "counts")
+h_s_o<-h_s_o$cre/h_sum
+#now correct for complexity by multiplying with factor
+correction_h<-mean(log10(median_nfeature_category_human$`human_all_atac$nFeature_cre`))/log10(cat_med_h)
+human_list_distances_orig[[i]]<-h_s_o*correction_h
+}
+
+#calculate distance between MH with original labels in mouse
+mouse_list_distances_orig<-list()
+Idents(mouse_select_atac)<-mouse_select_atac$cell_label
+median_nfeature_category_mouse2<-aggregate(as.data.frame(mouse_select_atac$nFeature_cre),by=list(mouse_select_atac$cell_label),FUN=median)
+for (i in levels(as.factor(mouse_select_atac$cell_label)))
+{
+print(i)
+g_m<-WhichCells(mouse_select_atac,idents = i)
+m_s_o<-subset(mouse_select_atac,cells = g_m)
+cat_med_m<-median(m_s_o$nFeature_cre)
+m_s_o<-BinarizeCounts(m_s_o,assay = "cre")
+m_sum<-as.vector(table(Idents(m_s_o)))
+m_sum<-replicate(m_sum,n = length(row.names(m_s_o)))
+m_s_o<-AggregateExpression(m_s_o,assays = "cre",slot = "counts")
+m_s_o<-m_s_o$cre/m_sum
+#now correct for complexity by multiplying with factor
+correction_m<-mean(log10(median_nfeature_category_mouse2$`mouse_select_atac$nFeature_cre`))/log10(cat_med_m)
+mouse_list_distances_orig[[i]]<-m_s_o*correction_m
+}
+
+hm_avg_dist_orig=data.frame(human=character(),mouse=character(),distance=double())
+for (i in levels(as.factor(mouse_select_atac$cell_label)))
+{
+  for (j in levels(as.factor(human_all_atac$celltype)))
+{
+print(paste0("mouse: ",i," human: ",j))
+ 
+m1<-human_list_distances_orig[[j]]
+m2<-mouse_list_distances_orig[[i]]
+temp<-data.frame(human=j,mouse=i,distance=cosine(x=m1[,1],y=m2[,1])[1,1])
+hm_avg_dist_orig<-rbind(hm_avg_dist_orig,temp)
+}
+}
+
+data_wide_hm_orig <- dcast(hm_avg_dist_orig, human ~ mouse, value.var="distance")
+row.names(data_wide_hm_orig)<-data_wide_hm_orig$human
+data_wide_hm_orig$human<-NULL
+library(circlize)
+col_fun = colorRamp2(c(-3,0,3), c("#08306b", "#bcbddc" ,"#67000d"))
+
+Heatmap(as.matrix(data_wide_hm_orig),cluster_columns = F,cluster_rows = F,col = col_fun)
+
+
+#here we need to highlight correlating sites
+Idents(human_all_atac)<-human_all_atac$celltype
+Idents(mouse_select_atac)<-mouse_select_atac$cell_label
+#look at what proportion of sites correlate between Human and Mouse Hepatocytes
+
+g_m<-WhichCells(mouse_select_atac,idents = "Hepatocytes")
+g_h<-WhichCells(human_all_atac,idents = "Cardiomyocytes")
+m_s<-subset(mouse_select_atac,cells = g_m)
+h_s<-subset(human_all_atac,cells = g_h)
+
+
+DefaultAssay(m_s)<-"cre"
+DefaultAssay(h_s)<-"cre"
+m_s[["cre99"]]<-NULL
+m_s[["cre05"]]<-NULL
+m_s[["mm10"]]<-NULL
+m_s[["Deviation_DA_mouse"]]<-NULL
+m_s[["Deviation_DA_human"]]<-NULL
+m_s[["Deviation_DA_int"]]<-NULL
+m_s[["chromvar"]]<-NULL
+m_s[["mm9"]]<-NULL
+h_s[["Deviation_DA_mouse"]]<-NULL
+h_s[["Deviation_DA_human"]]<-NULL
+h_s[["Deviation_DA_int"]]<-NULL
+h_s[["chromvar"]]<-NULL
+
+iteration_list_h<-list()
+iteration_list_m<-list()
+iteration_list_name_mouse<-list()
+iteration_list_name_human<-list()
+h_s_o<-NULL
+m_s_o<-NULL
+# Create a new column having the same 'value' stored for all cells
+m_s$noIdent <- "noIdent"
+Idents(m_s)<-m_s$noIdent  
+
+
+m_s<-FindTopFeatures(m_s)
+h_s<-FindTopFeatures(h_s)
+cat_med_h<-median(h_s$nFeature_cre)
+cat_med_m<-median(m_s$nFeature_cre)
+median_nfeature_category_mouse2<-aggregate(as.data.frame(mouse_select_atac$nFeature_cre),by=list(mouse_select_atac$cell_label),FUN=median)
+correction_m<-mean(log10(median_nfeature_category_mouse2$`mouse_select_atac$nFeature_cre`))/log10(cat_med_m)
+#for hep
+
+
+median_nfeature_category_human<-aggregate(as.data.frame(human_all_atac$nFeature_cre),by=list(human_all_atac$Cell.Type),FUN=median)
+correction_h<-mean(log10(median_nfeature_category_human$`human_all_atac$nFeature_cre`))/log10(cat_med_h)
+
+ptm <- proc.time()
+for (i in c(28:100))
+{
+random.seed = i
+
+
+mouse_cells<-NULL
+human_cells<-NULL
+mouse_cells<-sample(colnames(m_s), size=500, replace=F)
+iteration_list_name_mouse[[i]]<-mouse_cells
+human_cells<-sample(colnames(h_s), size=500, replace=F)
+iteration_list_name_human[[i]]<-human_cells
+M<-GetAssayData(m_s,assay="cre",slot="counts")[,mouse_cells]
+H<-GetAssayData(h_s,assay="cre",slot="counts")[,human_cells]
+
+MT<-CreateChromatinAssay(
+  counts = M,
+  sep = c(":", "-"))
+
+HT<-CreateChromatinAssay(
+  counts = H,
+  sep = c(":", "-"))
+
+Mouse_subset <- CreateSeuratObject(
+  counts = MT,
+  assay = "cre")
+Human_subset <- CreateSeuratObject(
+  counts = HT,
+  assay = "cre")
+
+Mouse_subset$noIdent <- "noIdent"
+Idents(Mouse_subset)<-Mouse_subset$noIdent 
+Human_subset$noIdent <- "noIdent"
+Idents(Human_subset)<-Human_subset$noIdent 
+
+
+Mouse_subset<-BinarizeCounts(Mouse_subset,assay = "cre")
+m_sum<-as.vector(table(Idents(Mouse_subset)))
+m_sum<-replicate(m_sum,n = length(row.names(Mouse_subset)))
+Mouse_subset<-AggregateExpression(Mouse_subset,assays = "cre",slot = "counts")
+Mouse_subset<-Mouse_subset$cre/m_sum
+iteration_list_m[[i]]<-Mouse_subset*correction_m
+
+Human_subset<-BinarizeCounts(Human_subset,assay = "cre")
+h_sum<-as.vector(table(Idents(Human_subset)))
+h_sum<-replicate(h_sum,n = length(row.names(Human_subset)))
+Human_subset<-AggregateExpression(Human_subset,assays = "cre",slot = "counts")
+Human_subset<-Human_subset$cre/h_sum
+iteration_list_h[[i]]<-Human_subset*correction_h
+print(i)
+}
+proc.time() - ptm
+
+iteration_list_name_human[[1]] %in% iteration_list_name_human[[2]]
+iteration_list_name_mouse[[1]] %in% iteration_list_name_mouse[[2]]
+iteration_list_m[[1]]-iteration_list_m[[2]]
+iteration_list_h[[1]]-iteration_list_h[[2]]
+
+Mouse<-data.frame(iteration_list_m)
+Human<-data.frame(iteration_list_h)
+
+
+m_s<-FindTopFeatures(m_s)
+
+have_reads_m<-row.names(m_s[["cre"]][[]][m_s[["cre"]][[]]$count>0,])
+h_s<-FindTopFeatures(h_s)
+have_reads_h<-row.names(h_s[["cre"]][[]][h_s[["cre"]][[]]$count>0,])
+
+look_at<-unique(sort(c(have_reads_h,have_reads_m)))
+
+Mouse<-Mouse[look_at,]
+Human<-Human[look_at,]
+distance_mh_site<-c()
+for (j in 1:dim(Mouse)[1])
+{
+Mvec<-t(Mouse[j,])[,1]
+Hvec<-t(Human[j,])[,1]
+distance_mh_site<-c(distance_mh_site,cosine(x=Mvec,Hvec))
+
+}
+
+mh_Hep_CARD<-data.frame(cosine=distance_mh_site)
+
+ggplot(mh_Hep_CARD,aes(cosine))+geom_histogram(binwidth=0.01)+theme_classic()+xlab("cosine similarity")+ylab("Number of peaks")
+
+write.table(mh_Hep_CARD,file="Hepatocyte_card_by_site_distance.txt",quote = F,sep = "\t")
+
+
+m_s_o<-BinarizeCounts(m_s_o,assay = "cre")
+m_sum<-as.vector(table(Idents(m_s_o)))
+m_sum<-replicate(m_sum,n = length(row.names(m_s_o)))
+m_s_o<-AggregateExpression(m_s_o,assays = "cre",slot = "counts")
+m_s_o<-m_s_o$cre/m_sum
+#print(m_s_o)
+#iteration_list_m[[i]]<-m_s_o
+
+cat_med_h<-median(h_s_o$nFeature_cre)
+h_s_o<-BinarizeCounts(h_s_o,assay = "cre")
+h_sum<-as.vector(table(Idents(h_s_o)))
+h_sum<-replicate(h_sum,n = length(row.names(h_s_o)))
+h_s_o<-AggregateExpression(h_s_o,assays = "cre",slot = "counts")
+h_s_o<-h_s_o$cre/h_sum
+iteration_list_h[[i]]<-h_s_o
+print(i)
+#proc.time() - ptm
+}
+
+
+mouse_cells1<-sample(colnames(m_s), size=500, replace=F)
+mouse_cells2<-sample(colnames(m_s), size=500, replace=F)
+
+
+
+
+rowSums(GetAssayData(m_s,assay="cre",slot="counts")[,mouse_cells1])-rowSums(GetAssayData(m_s,assay="cre",slot="counts")[,mouse_cells2])
+m_s_o1<-subset(m_s,cells = mouse_cells1)
+m_s_o2<-subset(m_s,cells = mouse_cells2)
+i=1
+iteration_list_m[[i]]<-rowSums(GetAssayData(m_s_o,assay="cre",slot="counts"))
+i=2
+iteration_list_m[[i]]<-rowSums(GetAssayData(m_s_o,assay="cre",slot="counts"))
+
+sum(iteration_list_m[[1]]-iteration_list_m[[2]])
+
+Hep_m<-merge(m_s_o,h_s_o)
+
+Hep_m<-FindTopFeatures(Hep_m)
+rownames_of_interest<-Hep_m[["cre"]][[]]$count>1
+res=rowMeans(RunTFIDF(GetAssayData(Hep_m,slot = "counts")[rownames_of_interest,]))
+wha<-hist(res,breaks = 200)
+
+#look at what proportion of sites correlate between Human and Mouse Hepatocytes
+g_m<-WhichCells(mouse_select_atac,idents = "Hepatocytes")
+g_h<-WhichCells(human_all_atac,idents = "Cardiomyocytes")
+m_s_o<-subset(mouse_select_atac,cells = g_m)
+h_s_o<-subset(human_all_atac,cells = g_h)
+
+
+DefaultAssay(m_s_o)<-"cre"
+DefaultAssay(h_s_o)<-"cre"
+m_s_o[["cre99"]]<-NULL
+m_s_o[["cre05"]]<-NULL
+m_s_o[["mm10"]]<-NULL
+m_s_o[["Deviation_DA_mouse"]]<-NULL
+m_s_o[["Deviation_DA_human"]]<-NULL
+m_s_o[["Deviation_DA_int"]]<-NULL
+m_s_o[["chromvar"]]<-NULL
+m_s_o[["mm9"]]<-NULL
+h_s_o[["Deviation_DA_mouse"]]<-NULL
+h_s_o[["Deviation_DA_human"]]<-NULL
+h_s_o[["Deviation_DA_int"]]<-NULL
+h_s_o[["chromvar"]]<-NULL
+
+Hep_2<-merge(m_s_o,h_s_o)
+Hep_2<-FindTopFeatures(Hep_2)
+
+
+rownames_of_interest<-Hep_2[["cre"]][[]]$count>1
+res2=rowMeans(RunTFIDF(GetAssayData(Hep_m,slot = "counts")[rownames_of_interest,]))
+wha2<-hist(res,breaks = 200)
+
+
+#now calculate average distance between the our labels
+
+
+hm_dist_list<-list()
+hm_avg_dist<-data.frame(human=character(),mouse=character(),distance=double())
+for (i in levels(as.factor(Idents(human_all_atac))))
+{
+  counter=1
+  for (l in levels(as.factor(Idents(human_all_atac))))
+{
+    print(paste("comparison:",i,l))
+m1<-human_list_distances[[i]]
+m2<-mouse_list_distances_h[[l]]
+
+combo_sub_hm<-expand.grid(colnames(m1),colnames(m2))
+distance_mh<-c()
+for (j in c(1:dim(combo_sub_hm)[1])) {
+x=data.frame(cat1=m1[,combo_sub_hm[j,1]])
+y=data.frame(cat2=m2[,combo_sub_hm[j,2]])
+distance_mh<-c(distance_mh,cosine(x=x$cat1,y$cat2))
+}
+df_c_s<-data.frame(combo_sub_hm)
+df_c_s$distance<-distance_mh
+names(df_c_s)<-c("human","mouse","distance")
+df_c_s$human<-paste0(i,"_",df_c_s$human)
+df_c_s$mouse<-paste0(l,"_",df_c_s$mouse)
+if(counter==1){
+hm_dist_list[[i]]<-df_c_s
+}else{hm_dist_list[[i]]<-rbind(hm_dist_list[[i]],df_c_s)}
+counter=counter+1
+hm_avg_dist<-rbind(hm_avg_dist,data.frame(human=i,mouse=l,distance=mean(df_c_s$distance)))
+}
+}
+lapply(hm_dist_list, function(x){mean(x$distance)})
+
+hm_show<-ldply(hm_dist_list, data.frame)
+hm_show$.id=NULL
+hm_show2<-rbind(hm_show,data.frame(human=hm_show$mouse,mouse=hm_show$human,distance=hm_show$distance))
+data_wide_hm <- dcast(hm_show, human ~ mouse, value.var="distance")
+row.names(data_wide_hm)<-data_wide_hm$human
+data_wide_hm$human<-NULL
+library(circlize)
+col_fun2 = colorRamp2(c(-3,0,3), c("#08306b", "white" ,"#67000d"))
+
+Heatmap(scale(as.matrix(data_wide_hm)),cluster_columns = F,cluster_rows = F,col = col_fun)
+
+data_wide_hm <- dcast(hm_avg_dist, human ~ mouse, value.var="distance")
+row.names(data_wide_hm)<-data_wide_hm$human
+data_wide_hm$human<-NULL
+library(circlize)
+col_fun = colorRamp2(c(0.4,0.525,0.65), c("#08306b", "#bcbddc" ,"#67000d"))
+
+Heatmap(as.matrix(data_wide_hm),cluster_columns = F,cluster_rows = F,col = col_fun)
+
+
+save(hm_dist_list, file = "Cosine_similarity_our_annot.RData")
+save(hm_avg_dist, file = "Cosine_similarity_avg_our_annot.RData")
+
+
+#from here the distance of distances 
+
+cats<-levels(as.factor(Idents(human_all_atac)))
+
+combo_count<-expand.grid.unique(cats,cats)
+
+human_average_distances=data.frame(ct1=character(),ct2=character(),avg_dist=double())
+mouse_average_distances=data.frame(ct1=character(),ct2=character(),avg_dist=double())
+
+for (i in c(1:78)) {
+cat1<-combo_count[i,1]
+cat2<-combo_count[i,2]
+print(paste(cat1,cat2))
+h1<-human_list_distances[[cat1]]
+h2<-human_list_distances[[cat2]]
+colnames(h1)<-paste0(cat1,"_",colnames(h1))
+colnames(h2)<-paste0(cat2,"_",colnames(h2))
+
+Hs<-merge(h1,h2,by="row.names")
+row.names(Hs)<-Hs$Row.names
+Hs$Row.names<-NULL
+Hs<-cosine(as.matrix(Hs))
+H_s<-Heatmap(Hs,column_title = "Human")
+
+combo_sub2_h<-expand.grid.unique(colnames(h1),colnames(h2))
+distance_h<-c()
+for (j in c(1:dim(combo_sub2_h)[1])) {
+x=data.frame(cat1=h1[,combo_sub2_h[j,1]])
+y=data.frame(cat2=h2[,combo_sub2_h[j,2]])
+distance_h<-c(distance_h,cosine(x=x$cat1,y$cat2))
+}
+tdisth<-data.frame(ct1=cat1,ct2=cat2,avg_dist=mean(distance_h))
+human_average_distances<-rbind(human_average_distances,tdisth)
+print("Now mouse")
+m1<-mouse_list_distances[[cat1]]
+m2<-mouse_list_distances[[cat2]]
+colnames(m1)<-paste0(cat1,"_",colnames(m1))
+colnames(m2)<-paste0(cat2,"_",colnames(m2))
+
+Ms<-merge(m1,m2,by="row.names")
+row.names(Ms)<-Ms$Row.names
+Ms$Row.names<-NULL
+Ms<-cosine(as.matrix(Ms))
+M_s<-Heatmap(Ms,column_title = "Mouse")
+
+
+
+
+combo_sub2_m<-expand.grid.unique(colnames(m1),colnames(m2))
+distance_m<-c()
+for (j in c(1:dim(combo_sub2_m)[1])) {
+x=data.frame(cat1=m1[,combo_sub2_m[j,1]])
+y=data.frame(cat2=m2[,combo_sub2_m[j,2]])
+distance_m<-c(distance_m,cosine(x=x$cat1,y$cat2))
+}
+
+tdistm<-data.frame(ct1=cat1,ct2=cat2,avg_dist=mean(distance_m))
+mouse_average_distances<-rbind(mouse_average_distances,tdistm)
+
+}
+
+
+data_wide_h <- dcast(human_average_distances, ct1 ~ ct2, value.var="avg_dist")
+row.names(data_wide_h)<-data_wide_h$ct1
+data_wide_h$ct1<-NULL
+Heatmap(as.matrix(data_wide_h),cluster_columns = T,cluster_rows = T)
+
+
+data_wide_m <- dcast(mouse_average_distances, ct1 ~ ct2, value.var="avg_dist")
+row.names(data_wide_m)<-data_wide_m$ct1
+data_wide_m$ct1<-NULL
+Heatmap(as.matrix(data_wide_m),cluster_columns = T,cluster_rows = T)
+
+data_wide_h$Myofibroblasts<-c(NA)
+data_wide_m$Myofibroblasts<-c(NA)
+
+extra_row<-data_wide_h[2,]
+row.names(extra_row)<-"Cardiomyocytes"
+extra_row[,2]<-NA
+
+data_wide_h<-rbind(data_wide_h,extra_row)
+
+data_wide_m<-rbind(data_wide_m,extra_row)
+
+
+H_s|M_s
+
+hd_h+hd_m
+
+
+wrap_plots(list(H_s,M_s),ncol=2)
+
+mouse_average_distances
+human_average_distances
+
+summary_barplot<-data.frame(ct=character(),corr=double())
+for (i in levels(as.factor(Idents(human_all_atac))))
+{
+a<-mouse_average_distances[which(mouse_average_distances$ct1==i | mouse_average_distances$ct2==i),3]
+b<-human_average_distances[which(human_average_distances$ct1==i | human_average_distances$ct2==i),3]
+print(paste0(i,"_",cor(a,b)))
+temp<-data.frame(ct=i,corr=cor(x = a,y = b,method = "spearman"))
+summary_barplot<-rbind(summary_barplot,temp)
+}
+
+
+summary_barplot<-summary_barplot[match(row.names(data_wide_h),summary_barplot$ct),]
+summary_barplot<-summary_barplot[order(as.numeric(rowSums(is.na(data_wide_h))),decreasing = T),]
+plot_h<-as.matrix(data_wide_h)[order(as.numeric(rowSums(is.na(data_wide_h))),decreasing = T),order(as.numeric(colSums(is.na(data_wide_h))),decreasing = T)]
+plot_m<-as.matrix(data_wide_m)[order(as.numeric(rowSums(is.na(data_wide_m))),decreasing = T),order(as.numeric(colSums(is.na(data_wide_m))),decreasing = T)]
+row.names(plot_h)
+
+library(circlize)
+
+pvalue_col_fun = colorRamp2(c(0, 0.2, 1), c("green", "white", "red"))
+ha = rowAnnotation(Sp_corr = anno_simple(summary_barplot$corr, col = pvalue_col_fun),annotation_name_side = "top")
+
+ha = rowAnnotation(Sp_corr = anno_points(summary_barplot$corr),annotation_name_side = "top")
+
+
+hd_h<-Heatmap(plot_h,cluster_columns = F,cluster_rows = F,name ="Average cosine similarity human",column_title  = "Human",right_annotation = ha)
+
+
+hd_m<-Heatmap(plot_m,cluster_columns = F,cluster_rows = F,name = "Average cosine similarity mouse",column_title = "Mouse")
+
+hd_m+hd_h
+
+
+#What is the cosine similarity directly between mouse and human
+```
+
+
+```{r}
+#distance calculation based on R suggestion
+
+human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
+mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+
+DefaultAssay(human)<-"cre"
+DefaultAssay(mouse)<-"cre"
+
+#calculate distance between MH with our labels human
+median_nfeature_category_human<-aggregate(as.data.frame(human$nFeature_cre),by=list(Idents(human)),FUN=median)
+median_nfeature_category_mouse<-aggregate(as.data.frame(mouse$nFeature_cre),by=list(Idents(mouse)),FUN=median)
+
+human_list_distances_orig<-list()
+mouse_list_distances_orig<-list()
+for (i in levels(as.factor(Idents(human))))
+{
+  print("human")
+print(i)
+#count normalized access for human
+g_h<-WhichCells(human,idents = i)
+h_s_o<-subset(human,cells = g_h)
+cat_med_h<-median(h_s_o$nFeature_cre)
+h_s_o<-BinarizeCounts(h_s_o,assay = "cre")
+h_sum<-as.vector(table(Idents(h_s_o)))
+h_sum<-replicate(h_sum,n = length(row.names(h_s_o)))
+h_s_o<-AggregateExpression(h_s_o,assays = "cre",slot = "counts")
+h_s_o<-h_s_o$cre/h_sum
+#now correct for complexity by multiplying with factor
+correction_h<-mean(log10(median_nfeature_category_human$`human$nFeature_cre`))/log10(cat_med_h)
+human_list_distances_orig[[i]]<-h_s_o*correction_h
+
+#now normalize mouse
+print("mouse")
+print(i)
+g_m<-WhichCells(mouse,idents = i)
+m_s_o<-subset(mouse,cells = g_m)
+cat_med_m<-median(m_s_o$nFeature_cre)
+m_s_o<-BinarizeCounts(m_s_o,assay = "cre")
+m_sum<-as.vector(table(Idents(m_s_o)))
+m_sum<-replicate(m_sum,n = length(row.names(m_s_o)))
+m_s_o<-AggregateExpression(m_s_o,assays = "cre",slot = "counts")
+m_s_o<-m_s_o$cre/m_sum
+#now correct for complexity by multiplying with factor
+correction_m<-mean(log10(median_nfeature_category_mouse$`mouse$nFeature_cre`))/log10(cat_med_m)
+mouse_list_distances_orig[[i]]<-m_s_o*correction_m
+}
+
+library(rlist)
+library(lsa)
+library(philentropy)
+mouse_dist<-list.cbind(mouse_list_distances_orig)
+colnames(mouse_dist)<-names(mouse_list_distances_orig)
+human_dist<-list.cbind(human_list_distances_orig)
+colnames(human_dist)<-names(human_list_distances_orig)
+
+mouse_dist<-t(mouse_dist)
+human_dist<-t(human_dist)
+
+library(foreach)
+library(parallel)
+
+# Example registering clusters
+cl <- parallel::makeCluster(10)
+doParallel::registerDoParallel(cl) 
+hm_avg_dist=data.frame(peak=character(),cosine=double(),eucl=double(),man=double(),jac=double())
+avg_list<-list()
+system.time(
+x<-foreach (i = 1:753741,  .combine='rbind' ,.packages = c("philentropy","lsa","rlist")) %dopar% {
+m1<-human_dist[,i]
+m2<-mouse_dist[,i]
+jac<-distance(rbind(m1,m2),method = "jaccard")
+euc<-distance(rbind(m1,m2),method = "euclidean")
+man<-distance(rbind(m1,m2),method = "manhattan")
+temp<-data.frame(peak=colnames(human_dist)[i],cosine=cosine(x=m1,y=m2)[1,1],eucl=euc,man=man,jac=jac)
+return(temp)
+}
+)
+
+write.table(x,"/home/torkenczyk/H_M_chromatin_atlas/human_data/Human_mouse_overall_distances.txt",quote = F,row.names = F,col.names = T)
+
+```

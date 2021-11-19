@@ -1,0 +1,1747 @@
+---
+title: "Replicate and Fetal data analysis"
+author: "Kristof Torkenczy"
+date: "11/16/2021"
+output: html_document
+---
+
+
+
+#Analysis of lung data
+```{r}
+#lung and pneumocytes
+human_all_atac
+
+all_cre_hg19<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/ALL.bg.hg19.bed",header = F)
+all_cre_hg19<-paste(all_cre_hg19$V1,all_cre_hg19$V2,all_cre_hg19$V3,sep = "-")
+all_cre_hg19_gr<-reduce(StringToGRanges(all_cre_hg19,sep = c("-","-")))
+meta_fetal<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
+meta_fetal_lung<-meta_fetal[which(meta_fetal$tissue=="lung"),]
+fragment1<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_4_lung.fragments.txt.gz"
+fragment2<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_8_lung.fragments.txt.gz"
+fragment3<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_33_lung.fragments.txt.gz"
+fragment4<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_38_lung.fragments.txt.gz"
+fragment5<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_44_lung.fragments.txt.gz"
+fragment6<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_47_lung.fragments.txt.gz"
+fragment7<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_68_lung.fragments.txt.gz"
+fragment8<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_70_lung.fragments.txt.gz"
+
+fragments1 <- CreateFragmentObject(
+  path = fragment1,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H26547" & meta_fetal_lung$batch=="batch_1",]$cell
+)
+fragments2 <- CreateFragmentObject(
+  path = fragment2,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H27058" & meta_fetal_lung$batch=="batch_1",]$cell,validate.fragments = T
+)
+fragments3 <- CreateFragmentObject(
+  path = fragment3,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H27098" & meta_fetal_lung$batch=="batch_2",]$cell,validate.fragments = T
+)
+fragments4 <- CreateFragmentObject(
+  path = fragment4,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H27431" & meta_fetal_lung$batch=="batch_2",]$cell,validate.fragments = T
+)
+fragments5 <- CreateFragmentObject(
+  path = fragment5,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H27472" & meta_fetal_lung$batch=="batch_2",]$cell,validate.fragments = T
+)
+fragments6 <- CreateFragmentObject(
+  path = fragment6,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H27469" & meta_fetal_lung$batch=="batch_2",]$cell,validate.fragments = T
+)
+fragments7 <- CreateFragmentObject(
+  path = fragment7,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H27472" & meta_fetal_lung$batch=="batch_3",]$cell,validate.fragments = T
+)
+fragments8 <- CreateFragmentObject(
+  path = fragment8,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H27469" & meta_fetal_lung$batch=="batch_3",]$cell,validate.fragments = T
+)
+
+
+
+plan("multiprocess", workers = 10)
+plan()
+options(future.globals.maxSize = 50 * 1024 ^ 3) # 
+cRE_peaks_fetal<- FeatureMatrix(
+ fragments = list(fragments1,fragments2,fragments3,fragments4,fragments5,fragments7,fragments8),
+ features =  all_cre_hg19_gr,cells = meta_fetal_lung$cell
+)
+
+fetal_lung_assay <- CreateChromatinAssay(
+  counts = cRE_peaks_fetal,
+  sep = c("-", "-"),
+  genome = "hg19",
+  fragments = list(fragments1,fragments2,fragments3,fragments4,fragments5,fragments7,fragments8),
+  min.cells = 1
+)
+
+fetal_lung <- CreateSeuratObject(
+  counts = fetal_lung_assay,
+  assay = 'peaks',
+  project = 'ATAC',
+)
+
+fetal_lung<-AddMetaData(fetal_lung,meta_fetal_lung)
+
+fetal_lung <- RunTFIDF(fetal_lung)
+fetal_lung <- FindTopFeatures(fetal_lung, min.cutoff = 'q0')
+fetal_lung <- RunSVD(object = fetal_lung)
+fetal_lung <- RunUMAP(
+  object = fetal_lung,
+  reduction = 'lsi',
+  dims = 2:30
+)
+
+DimPlot(fetal_lung,group.by ="cell_type",label = T)
+DimPlot(fetal_lung,group.by ="day_of_pregnancy",label = T)
+
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(chromVAR)
+library(motifmatchr)
+library(Matrix)
+library(SummarizedExperiment)
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Pneumocytes.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed",header = F)
+
+M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
+H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
+I_granges<-unique(sort(StringToGRanges(paste(S$V1,S$V2,S$V3,sep="-"))))
+
+Mat_granges<-reduce(sort(StringToGRanges(row.names(fetal_lung))))
+
+MO_Ol<-row.names(fetal_lung)[unique(subjectHits(findOverlaps(M_granges,subject = Mat_granges)))]
+HO_Ol<-row.names(fetal_lung)[unique(subjectHits(findOverlaps(H_granges,subject = Mat_granges)))]
+I_Ol<-row.names(fetal_lung)[unique(subjectHits(findOverlaps(I_granges,subject = Mat_granges)))]
+
+have_reads_m<-fetal_lung[["peaks"]][[]][fetal_lung[["peaks"]][[]]$count>0,]
+have_reads_m<-have_reads_m[-which(seqnames(rowRanges) == "chr17")[1],]
+
+
+matched_m<-row.names(have_reads_m) %in% MO_Ol
+matched_h<-row.names(have_reads_m) %in% HO_Ol
+matched_i <- row.names(have_reads_m) %in% I_Ol
+
+m_matched_df<- data.frame(mouse=matched_m,human=matched_h,int=matched_i)
+
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m <- getAnnotations(annotations = m_matched_df, rowRanges = rowRanges)
+
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(fetal_lung, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg19)
+seqlengths(BSgenome.Hsapiens.UCSC.hg19)[1:22]
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+
+dev_m_i <- computeDeviations(object = fragments_m, annotations = anno_m)
+chromvar.hz <- SummarizedExperiment::assays(dev_m_i)[[2]]
+fetal_lung[["Deviation_PN"]] <- CreateAssayObject(data = chromvar.hz)
+
+DefaultAssay(fetal_lung)<-"Deviation_PN"
+
+Idents(fetal_lung)<-fetal_lung$cell_type
+p2_mouse<-VlnPlot(fetal_lung, features = "mouse",idents =c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"),group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_human<-VlnPlot(fetal_lung, features = "human",idents =c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"),group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_shared<-VlnPlot(fetal_lung, features = "int",idents =c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"),group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_mouse|p2_human|p2_shared
+
+
+Idents(fetal_lung)<-fetal_lung$day_of_pregnancy
+p2b<-RidgePlot(fetal_lung, features = row.names(fetal_lung), ncol = 3)
+
+FeaturePlot(fetal_lung,features = c("human"),label = T)
+
+
+saveRDS(fetal_lung,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Fetal_pn.rds")
+
+
+Idents(fetal_lung)<-fetal_lung$cell_type
+feta_al_preg<-subset(fetal_lung,ident=c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"))
+#feta_al_preg<-subset(fetal_lung,ident=c("Bronchiolar and alveolar epithelial cells"))
+DefaultAssay(feta_al_preg)<-"peaks"
+
+feta_al_preg <- RunTFIDF(feta_al_preg)
+feta_al_preg <- FindTopFeatures(feta_al_preg, min.cutoff = 'q0')
+feta_al_preg <- RunSVD(object = feta_al_preg)
+feta_al_preg <- RunUMAP(
+  object = feta_al_preg,
+  reduction = 'lsi',
+  dims = 2:30
+)
+feta_al_preg <- FindNeighbors(object = feta_al_preg, reduction = 'lsi', dims = 2:30)
+feta_al_preg <- FindClusters(object = feta_al_preg, verbose = FALSE, algorithm = 3,resolution = 1)
+
+
+
+
+
+table(data.frame(feta_al_preg$day_of_pregnancy,feta_al_preg$peaks_snn_res.3))
+
+A<-data.frame(table(data.frame(feta_al_preg$day_of_pregnancy,feta_al_preg$peaks_snn_res.0.8)))
+names(A)<-c("D_pr","cluster","Freq")
+A<-acast(A, A$D_pr~A$cluster, value.var="Freq")
+
+Heatmap(t(scale(t(A))))
+
+
+DimPlot(feta_al_preg,group.by = "peaks_snn_res.0.8",pt.size = 1)+DimPlot(feta_al_preg,group.by = "day_of_pregnancy",pt.size = 1)
+
+
+#lets look at corrected access shared first
+C<-GetAssayData(feta_al_preg,slot = "counts",assay = "peaks")[I_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(feta_al_preg$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(feta_al_preg$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`))/log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+
+library(ComplexHeatmap)
+test_int_alv1<-as.matrix(Cagg2)
+
+ha = HeatmapAnnotation(shared = anno_boxplot(test_int_alv1))
+H_1<-Heatmap(test_int_alv1,show_column_names = T,show_row_names = F,cluster_rows = T,top_annotation = ha)
+
+pdf("SHARED_PN_FET1.pdf")
+H_1
+dev.off()
+
+matnames<-colnames(Cagg2)
+Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+colnames(Cagg2)<-matnames
+test_int_alv1b<-as.matrix(Cagg2)
+
+H_1b<-Heatmap(test_int_alv1b,show_column_names = T,show_row_names = F,cluster_rows = T)
+pdf("SHARED_PN_FET2.pdf")
+H_1b
+dev.off()
+
+#Then human
+C<-GetAssayData(feta_al_preg,slot = "counts",assay = "peaks")[HO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(feta_al_preg$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(feta_al_preg$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`))/log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_human_alv1<-as.matrix(Cagg2)
+
+
+ha = HeatmapAnnotation(human = anno_boxplot(test_human_alv1))
+H_2<-Heatmap(test_human_alv1,show_column_names = T,show_row_names = F,cluster_rows = T,top_annotation = ha)
+pdf("Human_PN_FET.pdf")
+H_2
+dev.off()
+
+#Then mouse
+C<-GetAssayData(feta_al_preg,slot = "counts",assay = "peaks")[MO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(feta_al_preg$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(feta_al_preg$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`))/log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_mouse_alv<-as.matrix(Cagg2)
+
+
+H_3<-Heatmap(test_mouse_alv,show_column_names = T,show_row_names = F,cluster_rows = T)
+pdf("Mouse_PN_FET.pdf")
+H_3
+dev.off()
+
+
+
+#easier to do ptime
+
+
+feta_al_preg<-subset(fetal_lung,ident=c("Bronchiolar and alveolar epithelial cells"))
+DefaultAssay(feta_al_preg)<-"peaks"
+
+feta_al_preg <- RunTFIDF(feta_al_preg)
+feta_al_preg <- FindTopFeatures(feta_al_preg, min.cells = 10)
+feta_al_preg <- RunSVD(object = feta_al_preg,n = 100)
+feta_al_preg <- RunUMAP(
+  object = feta_al_preg,
+  reduction = 'lsi',
+  dims = 2:100
+)
+feta_al_preg <- FindNeighbors(object = feta_al_preg, reduction = 'lsi', dims = 2:100)
+feta_al_preg <- FindClusters(object = feta_al_preg, verbose = FALSE, algorithm = 3,resolution = 0.8)
+
+
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(monocle3)
+library(Matrix)
+library(ggplot2)
+library(patchwork)
+set.seed(1234)
+
+#try pseudotime
+feta_al_preg.cds <- as.cell_data_set(feta_al_preg)
+feta_al_preg.cds <- cluster_cells(cds = feta_al_preg.cds, reduction_method = "UMAP")
+feta_al_preg.cds <- learn_graph(feta_al_preg.cds, use_partition = T,close_loop = F)
+
+feta_al_preg.cds <- order_cells(feta_al_preg.cds)
+
+plot_cells(feta_al_preg.cds,
+           color_cells_by = "day_of_pregnancy",
+           label_groups_by_cluster=T,
+           label_leaves=T,
+           label_branch_points=T)
+
+plot_cells(
+  cds = feta_al_preg.cds,
+  color_cells_by = "pseudotime",
+  show_trajectory_graph = TRUE
+)
+
+
+
+feta_al_preg <- AddMetaData(
+  object = feta_al_preg,
+  metadata = feta_al_preg.cds@principal_graph_aux@listData$UMAP$pseudotime,
+  col.name = "ptime"
+)
+
+saveRDS(feta_al_preg,file = "Fetal_alveolar_only.rds")
+
+#cluster along 1d 
+library(Ckmeans.1d.dp)
+kmpt<-Ckmeans.1d.dp(feta_al_preg$ptime)
+
+pclust<-data.frame(time=feta_al_preg$ptime,preg=feta_al_preg$day_of_pregnancy,cluster=paste("Cluster",kmpt$cluster))
+
+ggplot(pclust,aes(x=time,fill=as.factor(preg)))+geom_histogram()+theme_classic()
+
+ggplot(pclust,aes(x=time,fill=as.factor(cluster)))+geom_histogram()+theme_classic()
+
+#do chromvar but order by ptime?
+
+
+
+#groups<-as.factor(feta_al_preg$day_of_pregnancy)
+#but rerun with 
+
+groups<-as.factor(pclust$cluster)
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Pneumocytes.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed",header = F)
+
+M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
+H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
+I_granges<-unique(sort(StringToGRanges(paste(S$V1,S$V2,S$V3,sep="-"))))
+
+Mat_granges<-reduce(sort(StringToGRanges(row.names(feta_al_preg))))
+
+MO_Ol<-row.names(feta_al_preg)[unique(subjectHits(findOverlaps(M_granges,subject = Mat_granges)))]
+HO_Ol<-row.names(feta_al_preg)[unique(subjectHits(findOverlaps(H_granges,subject = Mat_granges)))]
+I_Ol<-row.names(feta_al_preg)[unique(subjectHits(findOverlaps(I_granges,subject = Mat_granges)))]
+
+
+#lets look at corrected access shared first
+C<-GetAssayData(feta_al_preg,slot = "counts",assay = "peaks")[I_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+#groups<-as.factor(feta_al_preg$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(feta_al_preg$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`))/log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+
+library(ComplexHeatmap)
+test_int_alv1<-as.matrix(Cagg2)
+
+ha = HeatmapAnnotation(shared = anno_boxplot(test_int_alv1))
+H_1<-Heatmap(test_int_alv1,show_column_names = T,show_row_names = F,cluster_rows = T,top_annotation = ha)
+
+pdf("SHARED_PN_FET1.pdf")
+H_1
+dev.off()
+
+matnames<-colnames(Cagg2)
+Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+colnames(Cagg2)<-matnames
+test_int_alv1b<-as.matrix(Cagg2)
+
+H_1b<-Heatmap(test_int_alv1b,show_column_names = T,show_row_names = F,cluster_rows = T)
+pdf("SHARED_PN_FET2.pdf")
+H_1b
+dev.off()
+
+#Then human
+C<-GetAssayData(feta_al_preg,slot = "counts",assay = "peaks")[HO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(feta_al_preg$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(feta_al_preg$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`))/log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_human_alv1<-as.matrix(Cagg2)
+
+
+ha = HeatmapAnnotation(human = anno_boxplot(test_human_alv1))
+H_2<-Heatmap(test_human_alv1,show_column_names = T,show_row_names = F,cluster_rows = T,top_annotation = ha)
+pdf("Human_PN_FET.pdf")
+H_2
+dev.off()
+
+#Then mouse
+C<-GetAssayData(feta_al_preg,slot = "counts",assay = "peaks")[MO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(feta_al_preg$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(feta_al_preg$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`))/log10(median_nfeature_category$`feta_al_preg$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_mouse_alv<-as.matrix(Cagg2)
+
+
+H_3<-Heatmap(test_mouse_alv,show_column_names = T,show_row_names = F,cluster_rows = T)
+pdf("Mouse_PN_FET.pdf")
+H_3
+dev.off()
+```
+
+
+Fetal_heart analysis
+```{r}
+#heart and cardiomyocytes
+all_cre_hg19<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/ALL.bg.hg19.bed",header = F)
+all_cre_hg19<-paste(all_cre_hg19$V1,all_cre_hg19$V2,all_cre_hg19$V3,sep = "-")
+all_cre_hg19_gr<-reduce(StringToGRanges(all_cre_hg19,sep = c("-","-")))
+meta_fetal<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
+meta_fetal_heart<-meta_fetal[which(meta_fetal$tissue=="heart"),]
+fragment1<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_12_heart.fragments.txt.gz"
+fragment2<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_14_heart.fragments.txt.gz"
+fragment3<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_32_heart.fragments.txt.gz"
+fragment4<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_39_heart.fragments.txt.gz"
+
+
+fragments1 <- CreateFragmentObject(
+  path = fragment1,cells = meta_fetal_heart[meta_fetal_heart$donor_id=="H27423" & meta_fetal_heart$batch=="batch_1",]$cell
+)
+fragments2 <- CreateFragmentObject(
+  path = fragment2,cells = meta_fetal_heart[meta_fetal_heart$donor_id=="H27431" & meta_fetal_heart$batch=="batch_1",]$cell,validate.fragments = T
+)
+fragments3 <- CreateFragmentObject(
+  path = fragment3,cells = meta_fetal_heart[meta_fetal_heart$donor_id=="H27098" & meta_fetal_heart$batch=="batch_2",]$cell,validate.fragments = T
+)
+fragments4 <- CreateFragmentObject(
+  path = fragment4,cells = meta_fetal_heart[meta_fetal_heart$donor_id=="H27464" & meta_fetal_heart$batch=="batch_2",]$cell,validate.fragments = T
+)
+
+
+
+
+plan("multiprocess", workers = 10)
+plan()
+options(future.globals.maxSize = 50 * 1024 ^ 3) # 
+cRE_peaks_fetal<- FeatureMatrix(
+ fragments = list(fragments1,fragments2,fragments3,fragments4),
+ features =  all_cre_hg19_gr,cells = meta_fetal_heart$cell
+)
+
+fetal_heart_assay <- CreateChromatinAssay(
+  counts = cRE_peaks_fetal,
+  sep = c("-", "-"),
+  genome = "hg19",
+  fragments = list(fragments1,fragments2,fragments3,fragments4),
+  min.cells = 1
+)
+
+fetal_heart <- CreateSeuratObject(
+  counts = fetal_heart_assay,
+  assay = 'peaks',
+  project = 'ATAC',
+)
+
+fetal_heart<-AddMetaData(fetal_heart,meta_fetal_heart)
+
+fetal_heart <- RunTFIDF(fetal_heart)
+fetal_heart <- FindTopFeatures(fetal_heart, min.cutoff = 'q0')
+fetal_heart <- RunSVD(object = fetal_heart)
+fetal_heart <- RunUMAP(
+  object = fetal_heart,
+  reduction = 'lsi',
+  dims = 2:30
+)
+
+DimPlot(fetal_heart,group.by ="cell_type",label = T)
+DimPlot(fetal_heart,group.by ="day_of_pregnancy",label = T)
+
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Cardiomyocytes.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Cardiomyocytes.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Cardiomyocytes.hg19.bed",header = F)
+
+M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
+H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
+I_granges<-unique(sort(StringToGRanges(paste(S$V1,S$V2,S$V3,sep="-"))))
+
+Mat_granges<-reduce(sort(StringToGRanges(row.names(fetal_heart))))
+
+MO_Ol<-row.names(fetal_heart)[unique(subjectHits(findOverlaps(M_granges,subject = Mat_granges)))]
+HO_Ol<-row.names(fetal_heart)[unique(subjectHits(findOverlaps(H_granges,subject = Mat_granges)))]
+I_Ol<-row.names(fetal_heart)[unique(subjectHits(findOverlaps(I_granges,subject = Mat_granges)))]
+
+have_reads_m<-fetal_heart[["peaks"]][[]][fetal_heart[["peaks"]][[]]$count>0,]
+have_reads_m<-have_reads_m[-which(seqnames(rowRanges) == "chr17")[1],]
+
+
+matched_m<-row.names(have_reads_m) %in% MO_Ol
+matched_h<-row.names(have_reads_m) %in% HO_Ol
+matched_i <- row.names(have_reads_m) %in% I_Ol
+
+m_matched_df<- data.frame(mouse=matched_m,human=matched_h,int=matched_i)
+
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m <- getAnnotations(annotations = m_matched_df, rowRanges = rowRanges)
+
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(fetal_heart, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg19)
+seqlengths(BSgenome.Hsapiens.UCSC.hg19)[1:22]
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+
+dev_m_i <- computeDeviations(object = fragments_m, annotations = anno_m)
+chromvar.hz <- SummarizedExperiment::assays(dev_m_i)[[2]]
+fetal_heart[["Deviation_PN"]] <- CreateAssayObject(data = chromvar.hz)
+
+DefaultAssay(fetal_heart)<-"Deviation_PN"
+
+Idents(fetal_heart)<-fetal_heart$cell_type
+
+RidgePlot(fetal_heart,features = c("human","mouse","int"))
+
+
+
+p2_mouse<-VlnPlot(fetal_heart, features = "mouse",idents =c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"),group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_human<-VlnPlot(fetal_heart, features = "human",idents =c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"),group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_shared<-VlnPlot(fetal_heart, features = "int",idents =c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"),group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_mouse+p2_human+p2_shared
+saveRDS(fetal_heart,file="Fetal_heart_analysis.rds")
+
+#fetal_heart_card<-subset(fetal_heart,ident=c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"))
+fetal_heart_card<-subset(fetal_heart,ident=c("Cardiomyocytes","Cardiomyocytes/Vascular endothelial cells"))
+DefaultAssay(fetal_heart_card)<-"peaks"
+
+fetal_heart_card <- RunTFIDF(fetal_heart_card)
+fetal_heart_card <- FindTopFeatures(fetal_heart_card, min.cutoff = 'q0')
+fetal_heart_card <- RunSVD(object = fetal_heart_card)
+fetal_heart_card <- RunUMAP(
+  object = fetal_heart_card,
+  reduction = 'lsi',
+  dims = 2:30
+)
+fetal_heart_card <- FindNeighbors(object = fetal_heart_card, reduction = 'lsi', dims = 2:30)
+fetal_heart_card <- FindClusters(object = fetal_heart_card, verbose = FALSE, algorithm = 3,resolution = 1)
+
+
+
+
+
+table(data.frame(fetal_heart_card$day_of_pregnancy,fetal_heart_card$peaks_snn_res.1))
+
+A<-data.frame(table(data.frame(fetal_heart_card$day_of_pregnancy,fetal_heart_card$peaks_snn_res.1)))
+names(A)<-c("D_pr","cluster","Freq")
+A<-acast(A, A$D_pr~A$cluster, value.var="Freq")
+
+Heatmap(t(scale(t(A))))
+
+
+DimPlot(fetal_heart_card,group.by = "cell_type",pt.size = 1)+DimPlot(fetal_heart_card,group.by = "peaks_snn_res.1",pt.size = 1)+DimPlot(fetal_heart_card,group.by = "day_of_pregnancy",pt.size = 1)
+
+
+#lets look at corrected access shared first
+C<-GetAssayData(fetal_heart_card,slot = "counts",assay = "peaks")[I_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_heart_card$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_heart_card$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_heart_card$nFeature_peaks`))/log10(median_nfeature_category$`fetal_heart_card$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+
+library(ComplexHeatmap)
+test_int_alv1<-as.matrix(Cagg2)
+
+ha = HeatmapAnnotation(shared = anno_boxplot(test_int_alv1))
+H_1<-Heatmap(test_int_alv1,show_column_names = T,show_row_names = F,cluster_rows = T,top_annotation = ha)
+
+pdf("SHARED_CR_FET1.pdf")
+H_1
+dev.off()
+
+matnames<-colnames(Cagg2)
+Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+colnames(Cagg2)<-matnames
+test_int_alv1b<-as.matrix(Cagg2)
+
+H_1b<-Heatmap(test_int_alv1b,show_column_names = T,show_row_names = F,cluster_rows = T)
+pdf("SHARED_PN==CR_FET2.pdf")
+H_1b
+dev.off()
+
+#Then human
+C<-GetAssayData(fetal_heart_card,slot = "counts",assay = "peaks")[HO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_heart_card$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_heart_card$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_heart_card$nFeature_peaks`))/log10(median_nfeature_category$`fetal_heart_card$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_human_alv1<-as.matrix(Cagg2)
+
+
+ha = HeatmapAnnotation(human = anno_boxplot(test_human_alv1))
+H_2<-Heatmap(test_human_alv1,show_column_names = T,show_row_names = F,cluster_rows = T,top_annotation = ha)
+pdf("Human_CR_FET.pdf")
+H_2
+dev.off()
+
+#Then mouse
+C<-GetAssayData(fetal_heart_card,slot = "counts",assay = "peaks")[MO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_heart_card$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_heart_card$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_heart_card$nFeature_peaks`))/log10(median_nfeature_category$`fetal_heart_card$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_mouse_alv<-as.matrix(Cagg2)
+
+
+H_3<-Heatmap(test_mouse_alv,show_column_names = T,show_row_names = F,cluster_rows = T)
+pdf("Mouse_CR.pdf")
+H_3
+dev.off()
+
+
+saveRDS(fetal_heart_card,file="Fetal_heart_analysis_card.rds")
+
+
+DimPlot(fetal_heart,group.by ="cell_type",label = T,pt.size = 1,raster=FALSE)+DimPlot(fetal_heart,group.by ="day_of_pregnancy",label = T,pt.size = 1,raster=FALSE)
+```
+
+
+Fetal liver analysis
+```{r}
+# hepatocytes
+
+meta_fetal<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
+meta_fetal_liver<-meta_fetal[which(meta_fetal$tissue=="liver"),]
+
+
+fragment1<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_7_liver.fragments.txt.gz"
+fragment2<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_9_liver.fragments.txt.gz"
+fragment3<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_35_liver.fragments.txt.gz"
+fragment4<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_37_liver.fragments.txt.gz"
+fragment5<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_40_liver.fragments.txt.gz"
+fragment6<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_43_liver.fragments.txt.gz"
+fragment7<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_46_liver.fragments.txt.gz"
+
+
+fragments1 <- CreateFragmentObject(path = fragment1,cells = meta_fetal_liver[meta_fetal_liver$donor_id=="H27058" & meta_fetal_liver$batch=="batch_1",]$cell,validate.fragments = T)
+fragments2 <- CreateFragmentObject(path = fragment2,cells = meta_fetal_liver[meta_fetal_liver$donor_id=="H27098" & meta_fetal_liver$batch=="batch_1",]$cell,validate.fragments = T)
+fragments3 <- CreateFragmentObject(path = fragment3,cells = meta_fetal_liver[meta_fetal_liver$donor_id=="H27423" & meta_fetal_liver$batch=="batch_2",]$cell,validate.fragments = T)
+fragments4 <- CreateFragmentObject(path = fragment4,cells = meta_fetal_liver[meta_fetal_liver$donor_id=="H27431" & meta_fetal_liver$batch=="batch_2",]$cell,validate.fragments = T)
+fragments5 <- CreateFragmentObject(path = fragment5,cells = meta_fetal_liver[meta_fetal_liver$donor_id=="H27464" & meta_fetal_liver$batch=="batch_2",]$cell,validate.fragments = T)
+fragments6 <- CreateFragmentObject(path = fragment6,cells = meta_fetal_liver[meta_fetal_liver$donor_id=="H27472" & meta_fetal_liver$batch=="batch_2",]$cell,validate.fragments = T)
+fragments7 <- CreateFragmentObject(path = fragment7,cells = meta_fetal_liver[meta_fetal_liver$donor_id=="H27469" & meta_fetal_liver$batch=="batch_2",]$cell,validate.fragments = T)
+
+
+plan("multiprocess", workers = 10)
+plan()
+options(future.globals.maxSize = 50 * 1024 ^ 3) # 
+cRE_peaks_fetal<- FeatureMatrix(
+ fragments = list(fragments1,fragments2,fragments3,fragments4,fragments5,fragments7),
+ features =  all_cre_hg19_gr,cells = meta_fetal_liver$cell
+)
+
+fetal_liver_assay <- CreateChromatinAssay(
+  counts = cRE_peaks_fetal,
+  sep = c("-", "-"),
+  genome = "hg19",
+  fragments = list(fragments1,fragments2,fragments3,fragments4,fragments5,fragments7),
+  min.cells = 1
+)
+
+fetal_liver <- CreateSeuratObject(
+  counts = fetal_liver_assay,
+  assay = 'peaks',
+  project = 'ATAC',
+)
+
+fetal_liver<-AddMetaData(fetal_liver,meta_fetal_liver)
+
+fetal_liver <- RunTFIDF(fetal_liver)
+fetal_liver <- FindTopFeatures(fetal_liver, min.cutoff = 'q0')
+fetal_liver <- RunSVD(object = fetal_liver)
+fetal_liver <- RunUMAP(
+  object = fetal_liver,
+  reduction = 'lsi',
+  dims = 2:30
+)
+
+DimPlot(fetal_liver,group.by ="cell_type",label = T,pt.size = 1,raster=FALSE)+DimPlot(fetal_liver,group.by ="day_of_pregnancy",label = T,pt.size = 1,raster=FALSE)
+
+saveRDS(fetal_liver,file="Fetal_liver_analysis.rds")
+
+
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Hepatocytes.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Hepatocytes.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Hepatocytes.hg19.bed",header = F)
+
+M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
+H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
+I_granges<-unique(sort(StringToGRanges(paste(S$V1,S$V2,S$V3,sep="-"))))
+
+Mat_granges<-reduce(sort(StringToGRanges(row.names(fetal_liver))))
+
+MO_Ol<-row.names(fetal_liver)[unique(subjectHits(findOverlaps(M_granges,subject = Mat_granges)))]
+HO_Ol<-row.names(fetal_liver)[unique(subjectHits(findOverlaps(H_granges,subject = Mat_granges)))]
+I_Ol<-row.names(fetal_liver)[unique(subjectHits(findOverlaps(I_granges,subject = Mat_granges)))]
+
+have_reads_m<-fetal_liver[["peaks"]][[]][fetal_liver[["peaks"]][[]]$count>0,]
+have_reads_m<-have_reads_m[-which(seqnames(rowRanges) == "chr17")[1],]
+
+
+matched_m<-row.names(have_reads_m) %in% MO_Ol
+matched_h<-row.names(have_reads_m) %in% HO_Ol
+matched_i <- row.names(have_reads_m) %in% I_Ol
+
+m_matched_df<- data.frame(mouse=matched_m,human=matched_h,int=matched_i)
+
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m <- getAnnotations(annotations = m_matched_df, rowRanges = rowRanges)
+
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(fetal_liver, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg19)
+seqlengths(BSgenome.Hsapiens.UCSC.hg19)[1:22]
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+
+dev_m_i <- computeDeviations(object = fragments_m, annotations = anno_m)
+chromvar.hz <- SummarizedExperiment::assays(dev_m_i)[[2]]
+
+chromvar.hz[is.na(chromvar.hz)]<-0
+
+fetal_liver[["Deviation_PN"]] <- CreateAssayObject(data = chromvar.hz)
+
+DefaultAssay(fetal_liver)<-"Deviation_PN"
+
+Idents(fetal_liver)<-fetal_liver$cell_type
+
+RidgePlot(fetal_liver,features = c("human","mouse","int"))
+
+p2_mouse<-VlnPlot(fetal_liver, features = "mouse",idents = "Hepatoblasts",group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_human<-VlnPlot(fetal_liver, features = "human",idents = "Hepatoblasts",group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_shared<-VlnPlot(fetal_liver, features = "int",idents = "Hepatoblasts",group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_mouse+p2_human+p2_shared
+saveRDS(fetal_liver,file="fetal_liver_analysis.rds")
+
+
+
+
+
+fetal_liver_hep<-subset(fetal_liver,ident=c("Hepatoblasts"))
+DefaultAssay(fetal_liver_hep)<-"peaks"
+
+fetal_liver_hep <- RunTFIDF(fetal_liver_hep)
+fetal_liver_hep <- FindTopFeatures(fetal_liver_hep, min.cutoff = 'q0')
+fetal_liver_hep <- RunSVD(object = fetal_liver_hep)
+fetal_liver_hep <- RunUMAP(
+  object = fetal_liver_hep,
+  reduction = 'lsi',
+  dims = 2:30
+)
+fetal_liver_hep <- FindNeighbors(object = fetal_liver_hep, reduction = 'lsi', dims = 2:30)
+fetal_liver_hep <- FindClusters(object = fetal_liver_hep, verbose = FALSE, algorithm = 3,resolution = 1)
+
+
+table(data.frame(fetal_liver_hep$day_of_pregnancy,fetal_liver_hep$peaks_snn_res.1))
+
+A<-data.frame(table(data.frame(fetal_liver_hep$day_of_pregnancy,fetal_liver_hep$peaks_snn_res.1)))
+names(A)<-c("D_pr","cluster","Freq")
+A<-acast(A, A$D_pr~A$cluster, value.var="Freq")
+
+Heatmap(t(scale(t(A))))
+
+
+DimPlot(fetal_liver_hep,group.by = "cell_type",pt.size = 1)+DimPlot(fetal_liver_hep,group.by = "peaks_snn_res.1",pt.size = 1)+DimPlot(fetal_liver_hep,group.by = "day_of_pregnancy",pt.size = 1)
+DimPlot(fetal_liver_hep,group.by = "cell_type",pt.size = 1)+DimPlot(fetal_liver_hep,group.by = "day_of_pregnancy",pt.size = 1)
+
+#lets look at corrected access shared first
+C<-GetAssayData(fetal_liver_hep,slot = "counts",assay = "peaks")[I_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_liver_hep$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_liver_hep$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_liver_hep$nFeature_peaks`))/log10(median_nfeature_category$`fetal_liver_hep$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+
+library(ComplexHeatmap)
+test_int_alv1<-as.matrix(Cagg2)
+
+ha = HeatmapAnnotation(shared = anno_boxplot(test_int_alv1))
+H_1<-Heatmap(test_int_alv1,show_column_names = T,show_row_names = F,cluster_rows = T,top_annotation = ha)
+
+pdf("SHARED_hep_FET1.pdf")
+H_1
+dev.off()
+
+matnames<-colnames(Cagg2)
+Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+colnames(Cagg2)<-matnames
+test_int_alv1b<-as.matrix(Cagg2)
+
+H_1b<-Heatmap(test_int_alv1b,show_column_names = T,show_row_names = F,cluster_rows = T)
+pdf("SHARED_PN==hep_FET2.pdf")
+H_1b
+dev.off()
+
+#Then human
+C<-GetAssayData(fetal_liver_hep,slot = "counts",assay = "peaks")[HO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_liver_hep$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_liver_hep$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_liver_hep$nFeature_peaks`))/log10(median_nfeature_category$`fetal_liver_hep$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_human_alv1<-as.matrix(Cagg2)
+
+
+ha = HeatmapAnnotation(human = anno_boxplot(test_human_alv1))
+H_2<-Heatmap(test_human_alv1,show_column_names = T,show_row_names = F,cluster_rows = T,top_annotation = ha)
+pdf("Human_hep_FET.pdf")
+H_2
+dev.off()
+
+#Then mouse
+C<-GetAssayData(fetal_liver_hep,slot = "counts",assay = "peaks")[MO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_liver_hep$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_liver_hep$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_liver_hep$nFeature_peaks`))/log10(median_nfeature_category$`fetal_liver_hep$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_mouse_alv<-as.matrix(Cagg2)
+
+
+H_3<-Heatmap(test_mouse_alv,show_column_names = T,show_row_names = F,cluster_rows = T)
+pdf("Mouse_hep.pdf")
+H_3
+dev.off()
+
+
+saveRDS(fetal_liver_hep,file="fetal_liver_analysis_hep.rds")
+```
+
+Fetal intestine analysis
+```{r}
+#intestine
+meta_fetal<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
+meta_fetal_intestine<-meta_fetal[which(meta_fetal$tissue=="intestine"),]
+
+
+fragment1<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_19_intestine.fragments.txt.gz"
+fragment2<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_21_intestine.fragments.txt.gz"
+fragment3<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_28_intestine.fragments.txt.gz"
+
+
+fragments1 <- CreateFragmentObject(path = fragment1,cells = meta_fetal_intestine[meta_fetal_intestine$donor_id=="H27472" & meta_fetal_intestine$batch=="batch_1",]$cell,validate.fragments = T)
+fragments2 <- CreateFragmentObject(path = fragment2,cells = meta_fetal_intestine[meta_fetal_intestine$donor_id=="H27477" & meta_fetal_intestine$batch=="batch_1",]$cell,validate.fragments = T)
+fragments3 <- CreateFragmentObject(path = fragment3,cells = meta_fetal_intestine[meta_fetal_intestine$donor_id=="H26547" & meta_fetal_intestine$batch=="batch_2",]$cell,validate.fragments = T)
+
+plan("multiprocess", workers = 10)
+plan()
+options(future.globals.maxSize = 50 * 1024 ^ 3) # 
+cRE_peaks_fetal<- FeatureMatrix(
+ fragments = list(fragments1,fragments2,fragments3),
+ features =  all_cre_hg19_gr,cells = meta_fetal_intestine$cell
+)
+
+fetal_intestine_assay <- CreateChromatinAssay(
+  counts = cRE_peaks_fetal,
+  sep = c("-", "-"),
+  genome = "hg19",
+  fragments = list(fragments1,fragments2,fragments3),
+  min.cells = 1
+)
+
+fetal_intestine <- CreateSeuratObject(
+  counts = fetal_intestine_assay,
+  assay = 'peaks',
+  project = 'ATAC',
+)
+
+fetal_intestine<-AddMetaData(fetal_intestine,meta_fetal_intestine)
+
+fetal_intestine <- RunTFIDF(fetal_intestine)
+fetal_intestine <- FindTopFeatures(fetal_intestine, min.cutoff = 'q0')
+fetal_intestine <- RunSVD(object = fetal_intestine)
+fetal_intestine <- RunUMAP(
+  object = fetal_intestine,
+  reduction = 'lsi',
+  dims = 2:30
+)
+
+DimPlot(fetal_intestine,group.by ="cell_type",label = T)
+DimPlot(fetal_intestine,group.by ="day_of_pregnancy",label = T)
+
+saveRDS(fetal_intestine,file="Fetal_intestine_analysis.rds")
+
+DimPlot(fetal_intestine,group.by = "cell_type",pt.size = 1,label = T)+DimPlot(fetal_intestine,group.by = "day_of_pregnancy",pt.size = 1)
+
+#look at entero originating cells
+
+
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Goblet_cells.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Goblet_cells.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Goblet_cells.hg19.bed",header = F)
+
+M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
+H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
+I_granges<-unique(sort(StringToGRanges(paste(S$V1,S$V2,S$V3,sep="-"))))
+
+Mat_granges<-reduce(sort(StringToGRanges(row.names(fetal_intestine))))
+
+MO_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(M_granges,subject = Mat_granges)))]
+HO_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(H_granges,subject = Mat_granges)))]
+I_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(I_granges,subject = Mat_granges)))]
+
+have_reads_m<-fetal_intestine[["peaks"]][[]][fetal_intestine[["peaks"]][[]]$count>0,]
+have_reads_m<-have_reads_m[-which(seqnames(rowRanges) == "chr17")[1],]
+
+
+matched_m<-row.names(have_reads_m) %in% MO_Ol
+matched_h<-row.names(have_reads_m) %in% HO_Ol
+matched_i <- row.names(have_reads_m) %in% I_Ol
+
+m_matched_df<- data.frame(mouse=matched_m,human=matched_h,int=matched_i)
+
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m <- getAnnotations(annotations = m_matched_df, rowRanges = rowRanges)
+
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(fetal_intestine, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg19)
+seqlengths(BSgenome.Hsapiens.UCSC.hg19)[1:22]
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+
+dev_m_i <- computeDeviations(object = fragments_m, annotations = anno_m)
+chromvar.hz <- SummarizedExperiment::assays(dev_m_i)[[2]]
+
+chromvar.hz[is.na(chromvar.hz)]<-0
+
+fetal_intestine[["Deviation_GB"]] <- CreateAssayObject(data = chromvar.hz)
+
+DefaultAssay(fetal_intestine)<-"Deviation_GB"
+
+Idents(fetal_intestine)<-fetal_intestine$cell_type
+
+RidgePlot(fetal_intestine,features = c("human","mouse","int"))
+
+#Enterocytes
+DefaultAssay(fetal_intestine)<-"peaks"
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Enterocytes.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Enterocytes.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Enterocytes.hg19.bed",header = F)
+
+M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
+H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
+I_granges<-unique(sort(StringToGRanges(paste(S$V1,S$V2,S$V3,sep="-"))))
+
+Mat_granges<-reduce(sort(StringToGRanges(row.names(fetal_intestine))))
+
+MO_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(M_granges,subject = Mat_granges)))]
+HO_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(H_granges,subject = Mat_granges)))]
+I_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(I_granges,subject = Mat_granges)))]
+
+have_reads_m<-fetal_intestine[["peaks"]][[]][fetal_intestine[["peaks"]][[]]$count>0,]
+have_reads_m<-have_reads_m[-which(seqnames(rowRanges) == "chr17")[1],]
+
+
+matched_m<-row.names(have_reads_m) %in% MO_Ol
+matched_h<-row.names(have_reads_m) %in% HO_Ol
+matched_i <- row.names(have_reads_m) %in% I_Ol
+
+m_matched_df<- data.frame(mouse=matched_m,human=matched_h,int=matched_i)
+
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m <- getAnnotations(annotations = m_matched_df, rowRanges = rowRanges)
+
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(fetal_intestine, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg19)
+seqlengths(BSgenome.Hsapiens.UCSC.hg19)[1:22]
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+
+dev_m_i <- computeDeviations(object = fragments_m, annotations = anno_m)
+chromvar.hz <- SummarizedExperiment::assays(dev_m_i)[[2]]
+
+chromvar.hz[is.na(chromvar.hz)]<-0
+
+fetal_intestine[["Deviation_Ent"]] <- CreateAssayObject(data = chromvar.hz)
+
+DefaultAssay(fetal_intestine)<-"Deviation_Ent"
+
+Idents(fetal_intestine)<-fetal_intestine$cell_type
+
+RidgePlot(fetal_intestine,features = c("human","mouse","int"))
+
+
+#schwann cells
+DefaultAssay(fetal_intestine)<-"peaks"
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Schwann_cells.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Schwann_cells.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Schwann_cells.hg19.bed",header = F)
+
+M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
+H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
+I_granges<-unique(sort(StringToGRanges(paste(S$V1,S$V2,S$V3,sep="-"))))
+
+Mat_granges<-reduce(sort(StringToGRanges(row.names(fetal_intestine))))
+
+MO_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(M_granges,subject = Mat_granges)))]
+HO_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(H_granges,subject = Mat_granges)))]
+I_Ol<-row.names(fetal_intestine)[unique(subjectHits(findOverlaps(I_granges,subject = Mat_granges)))]
+
+have_reads_m<-fetal_intestine[["peaks"]][[]][fetal_intestine[["peaks"]][[]]$count>0,]
+have_reads_m<-have_reads_m[-which(seqnames(rowRanges) == "chr17")[1],]
+
+
+matched_m<-row.names(have_reads_m) %in% MO_Ol
+matched_h<-row.names(have_reads_m) %in% HO_Ol
+matched_i <- row.names(have_reads_m) %in% I_Ol
+
+m_matched_df<- data.frame(mouse=matched_m,human=matched_h,int=matched_i)
+
+rowRanges<-StringToGRanges(row.names(have_reads_m))
+anno_m <- getAnnotations(annotations = m_matched_df, rowRanges = rowRanges)
+
+fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(fetal_intestine, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
+fragments_m <- filterPeaks(fragments_m, non_overlapping = TRUE)
+fragments_m <- addGCBias(fragments_m, genome = BSgenome.Hsapiens.UCSC.hg19)
+seqlengths(BSgenome.Hsapiens.UCSC.hg19)[1:22]
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+
+dev_m_i <- computeDeviations(object = fragments_m, annotations = anno_m)
+chromvar.hz <- SummarizedExperiment::assays(dev_m_i)[[2]]
+
+chromvar.hz[is.na(chromvar.hz)]<-0
+
+fetal_intestine[["Deviation_Sch"]] <- CreateAssayObject(data = chromvar.hz)
+
+DefaultAssay(fetal_intestine)<-"Deviation_Sch"
+
+Idents(fetal_intestine)<-fetal_intestine$cell_type
+
+RidgePlot(fetal_intestine,features = c("human","mouse","int"))
+
+saveRDS(fetal_intestine,file="Fetal_intestine_analysis.rds")
+
+
+#time break down
+#need to rerun depending on
+
+#entero and goblet cells
+
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Goblet_cells.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Goblet_cells.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Goblet_cells.hg19.bed",header = F)
+
+
+#OR
+
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Enterocytes.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Enterocytes.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Enterocytes.hg19.bed",header = F)
+
+DefaultAssay(fetal_intestine)<-"peaks"
+fetal_intestine_entgob<-subset(fetal_intestine,ident=c("Chromaffin cells","Intestinal epithelial cells","Intestine_Unknown.8"))
+
+
+fetal_intestine_entgob <- RunTFIDF(fetal_intestine_entgob)
+fetal_intestine_entgob <- FindTopFeatures(fetal_intestine_entgob, min.cutoff = 'q0')
+fetal_intestine_entgob <- RunSVD(object = fetal_intestine_entgob)
+fetal_intestine_entgob <- RunUMAP(
+  object = fetal_intestine_entgob,
+  reduction = 'lsi',
+  dims = 2:30
+)
+fetal_intestine_entgob <- FindNeighbors(object = fetal_intestine_entgob, reduction = 'lsi', dims = 2:30)
+fetal_intestine_entgob <- FindClusters(object = fetal_intestine_entgob, verbose = FALSE, algorithm = 3,resolution = 1)
+
+
+table(data.frame(fetal_intestine_entgob$day_of_pregnancy,fetal_intestine_entgob$peaks_snn_res.1))
+
+A<-data.frame(table(data.frame(fetal_intestine_entgob$day_of_pregnancy,fetal_intestine_entgob$peaks_snn_res.1)))
+names(A)<-c("D_pr","cluster","Freq")
+A<-acast(A, A$D_pr~A$cluster, value.var="Freq")
+
+Heatmap(t(scale(t(A))))
+
+
+DimPlot(fetal_intestine_entgob,group.by = "cell_type",pt.size = 1)+DimPlot(fetal_intestine_entgob,group.by = "peaks_snn_res.1",pt.size = 1)+DimPlot(fetal_intestine_entgob,group.by = "day_of_pregnancy",pt.size = 1)
+DimPlot(fetal_intestine_entgob,group.by = "cell_type",pt.size = 1)+DimPlot(fetal_intestine_entgob,group.by = "day_of_pregnancy",pt.size = 1)
+
+#lets look at corrected access shared first
+C<-GetAssayData(fetal_intestine_entgob,slot = "counts",assay = "peaks")[I_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_intestine_entgob$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_intestine_entgob$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_intestine_entgob$nFeature_peaks`))/log10(median_nfeature_category$`fetal_intestine_entgob$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+
+library(ComplexHeatmap)
+test_int_alv1<-as.matrix(Cagg2)
+
+ha = HeatmapAnnotation(shared = anno_boxplot(test_int_alv1))
+H_1<-Heatmap(test_int_alv1,show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE,top_annotation = ha)
+
+pdf("SHARED_ent_FET1.pdf")
+H_1
+dev.off()
+
+matnames<-colnames(Cagg2)
+Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+colnames(Cagg2)<-matnames
+test_int_alv1b<-as.matrix(Cagg2)
+
+H_1b<-Heatmap(test_int_alv1b,show_column_names = FALSE,show_row_names = FALSE,cluster_rows = TRUE)
+pdf("SHARED_ent_FET2.pdf")
+H_1b
+dev.off()
+
+#Then human
+C<-GetAssayData(fetal_intestine_entgob,slot = "counts",assay = "peaks")[HO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_intestine_entgob$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_intestine_entgob$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_intestine_entgob$nFeature_peaks`))/log10(median_nfeature_category$`fetal_intestine_entgob$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_human_alv1<-as.matrix(Cagg2)
+
+
+ha = HeatmapAnnotation(human = anno_boxplot(test_human_alv1))
+H_2<-Heatmap(test_human_alv1,show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE,top_annotation = ha)
+pdf("Human_ent_FET.pdf")
+H_2
+dev.off()
+
+#Then mouse
+C<-GetAssayData(fetal_intestine_entgob,slot = "counts",assay = "peaks")[MO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_intestine_entgob$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_intestine_entgob$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_intestine_entgob$nFeature_peaks`))/log10(median_nfeature_category$`fetal_intestine_entgob$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_mouse_alv<-as.matrix(Cagg2)
+
+
+H_3<-Heatmap(test_mouse_alv,show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE)
+pdf("Mouse_gob.pdf")
+H_3
+dev.off()
+
+
+saveRDS(fetal_intestine_entgob,file="fetal_intestine_analysis_entgob.rds")
+
+#Schwann cells
+S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Schwann_cells.hg19.bed",header = F)
+HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Schwann_cells.hg19.bed",header = F)
+MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Schwann_cells.hg19.bed",header = F)
+
+DefaultAssay(fetal_intestine)<-"peaks"
+fetal_intestine_sch<-subset(fetal_intestine,ident=c("ENS glia"))
+
+
+fetal_intestine_sch <- RunTFIDF(fetal_intestine_sch)
+fetal_intestine_sch <- FindTopFeatures(fetal_intestine_sch, min.cutoff = 'q0')
+fetal_intestine_sch <- RunSVD(object = fetal_intestine_sch)
+fetal_intestine_sch <- RunUMAP(
+  object = fetal_intestine_sch,
+  reduction = 'lsi',
+  dims = 2:30
+)
+fetal_intestine_sch <- FindNeighbors(object = fetal_intestine_sch, reduction = 'lsi', dims = 2:30)
+fetal_intestine_sch <- FindClusters(object = fetal_intestine_sch, verbose = FALSE, algorithm = 3,resolution = 1)
+
+
+table(data.frame(fetal_intestine_sch$day_of_pregnancy,fetal_intestine_sch$peaks_snn_res.1))
+
+A<-data.frame(table(data.frame(fetal_intestine_sch$day_of_pregnancy,fetal_intestine_sch$peaks_snn_res.1)))
+names(A)<-c("D_pr","cluster","Freq")
+A<-acast(A, A$D_pr~A$cluster, value.var="Freq")
+
+Heatmap(t(scale(t(A))))
+
+
+DimPlot(fetal_intestine_sch,group.by = "cell_type",pt.size = 1)+DimPlot(fetal_intestine_sch,group.by = "peaks_snn_res.1",pt.size = 1)+DimPlot(fetal_intestine_sch,group.by = "day_of_pregnancy",pt.size = 1)
+DimPlot(fetal_intestine_sch,group.by = "cell_type",pt.size = 1)+DimPlot(fetal_intestine_sch,group.by = "day_of_pregnancy",pt.size = 1)
+
+#lets look at corrected access shared first
+C<-GetAssayData(fetal_intestine_sch,slot = "counts",assay = "peaks")[I_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_intestine_sch$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_intestine_sch$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_intestine_sch$nFeature_peaks`))/log10(median_nfeature_category$`fetal_intestine_sch$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+
+library(ComplexHeatmap)
+test_int_alv1<-as.matrix(Cagg2)
+
+ha = HeatmapAnnotation(shared = anno_boxplot(test_int_alv1))
+H_1<-Heatmap(test_int_alv1,show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE,top_annotation = ha)
+
+pdf("SHARED_sch_FET1.pdf")
+H_1
+dev.off()
+
+matnames<-colnames(Cagg2)
+Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+colnames(Cagg2)<-matnames
+test_int_alv1b<-as.matrix(Cagg2)
+
+H_1b<-Heatmap(test_int_alv1b,show_column_names = FALSE,show_row_names = FALSE,cluster_rows = TRUE)
+pdf("SHARED_sch_FET2.pdf")
+H_1b
+dev.off()
+
+#Then human
+C<-GetAssayData(fetal_intestine_sch,slot = "counts",assay = "peaks")[HO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_intestine_sch$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_intestine_sch$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_intestine_sch$nFeature_peaks`))/log10(median_nfeature_category$`fetal_intestine_sch$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_human_alv1<-as.matrix(Cagg2)
+
+
+ha = HeatmapAnnotation(human = anno_boxplot(test_human_alv1))
+H_2<-Heatmap(test_human_alv1,show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE,top_annotation = ha)
+pdf("Human_sch_FET.pdf")
+H_2
+dev.off()
+
+#Then mouse
+C<-GetAssayData(fetal_intestine_sch,slot = "counts",assay = "peaks")[MO_Ol,]
+
+C<-as.matrix((C > 0) + 0)
+groups<-as.factor(fetal_intestine_sch$day_of_pregnancy)
+
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(fetal_intestine_sch$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`fetal_intestine_sch$nFeature_peaks`))/log10(median_nfeature_category$`fetal_intestine_sch$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+library(scales)
+matnames<-colnames(Cagg2)
+#Cagg2<-as.data.frame(t(apply(Cagg2, 1, scale)))
+#colnames(Cagg2)<-matnames
+
+library(ComplexHeatmap)
+test_mouse_alv<-as.matrix(Cagg2)
+
+
+H_3<-Heatmap(test_mouse_alv,show_column_names = TRUE,show_row_names = FALSE,cluster_rows = TRUE)
+pdf("Mouse_sch.pdf")
+H_3
+dev.off()
+
+
+
+```
+
+Of sites that are accessible of original sites can we learn motifs that are only present there
+```{r}
+
+```
+
+

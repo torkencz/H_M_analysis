@@ -1,0 +1,452 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+internal functions
+
+```{r}
+
+
+
+top_n_neighbors<-function(object,assay="humanPeaksamp",k=21)
+{
+DefaultAssay(object)<-assay
+  print(object)
+if(is.null(object)){stop("object not found")}
+
+top_percent_neighbors<-data.frame(percent_matched=double(),species=character())
+for (i in c("mouse","human"))
+{
+object_sub<-subset(object,subset = species == i)
+ktest<-FindNeighbors(object = object_sub,reduction = "integrated_dr",assay =assay, k.param = k, graph.name ="atac_neighbor_top",compute.SNN = T ,dims = 2:30,return.neighbor = T)
+cell_names<-row.names(ktest[[]])
+for (j in cell_names)
+{
+top20_neighbors<-TopNeighbors(object = ktest@neighbors$atac_neighbor_top,cell = j,n = k)
+#remove self
+top20_neighbors<-top20_neighbors[-which(top20_neighbors==j)]
+#what is query cell's celltype
+celltype_self<-rep(Celltype_dictionary_top[j],times=k-1)
+#what is the celltype of the neighbors
+celltype_neighbor<-Celltype_dictionary_top[top20_neighbors]
+
+matches_top<-celltype_self==celltype_neighbor
+percent_matched<-sum(matches_top)/20
+
+top_percent_neighbors_cell<-data.frame(percent_matched=percent_matched,species=i)
+row.names(top_percent_neighbors_cell)<-j
+top_percent_neighbors=rbind(top_percent_neighbors,top_percent_neighbors_cell)
+}
+}
+return(top_percent_neighbors) 
+}
+
+integrated_neigbours<-function(neigbors,cell_dictionary,cell_names,k=21,chosen_species="mouse",number_of_Str=5)
+{
+library(foreach)
+library(doParallel)
+cl <- makeCluster(number_of_Str,setup_strategy = "sequential")
+registerDoParallel(cl)
+
+  print(object)
+if(is.null(neigbors)){stop("neigbors not found")}
+  
+top_percent_neighbors<-foreach(j=cell_names,.packages = c("Seurat","Signac","spam","spam64","reshape2","dplyr")) %dopar% {
+species_cell<-cell_dictionary[j,1]
+
+top20_neighbors<-TopNeighbors(object = neigbors,cell = j,n = k)
+
+
+
+#remove self
+top20_neighbors<-top20_neighbors[-which(top20_neighbors==j)]
+#what is the celltype of the neighbors
+celltype_neighbor<-cell_dictionary[top20_neighbors]
+
+matches_top<-as.data.frame(table(celltype_neighbor)/20)
+#what is query cell's celltype
+celltype_self<-rep(cell_dictionary[j],times=dim(matches_top)[1])
+matches_top$original_cell<-celltype_self
+matches_top
+}
+stopCluster(cl)
+return(top_percent_neighbors)
+
+ 
+}
+
+
+
+```
+
+
+
+
+
+```{r}
+#dependencies
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(EnsDb.Mmusculus.v79)
+library(EnsDb.Mmusculus.v75)
+library(ggplot2)
+library(patchwork)
+library(Signac)
+library(tidyr)
+library(Seurat)
+library(devtools)
+load_all("~/devel/seurat-private-feat-incrementalPCA/")
+load_all("~/devel/signac-private-master/")
+require(spam)
+require(spam64)
+library(reshape2)
+library(dplyr)
+
+human_all_atac<-readRDS("~/share_Yuhan/Human_5kb_bins.rds")
+mouse_select_atac<-readRDS("~/share_Yuhan/Mouse_5kb_bins.rds")
+
+
+human_all_atac$species<-"human"
+mouse_select_atac$species<-"mouse"
+
+
+species<-rbind(human_all_atac[["species"]],mouse_select_atac[["species"]])
+
+
+# find integration anchors between mouse and human
+anchors_H_M <- FindIntegrationAnchors( object.list=list(human_all_atac, mouse_select_atac),
+                                       anchor.features = rownames(human_all_atac),scale=F,sparse=TRUE,spam=TRUE,
+                                       assay = c('humanPeaks', 'humanPeaks'),
+                                       k.filter = NA
+)
+
+
+saveRDS(anchors_H_M,file="All_bins.spam.achors.rds")
+
+
+atac.feature <- intersect(rownames(human_all_atac ), rownames(mouse_select_atac))
+obj.both <- merge(human_all_atac, mouse_select_atac)
+VariableFeatures(obj.both) <- atac.feature
+obj.both <- RunSVD(object = obj.both, n = 100 )
+
+integrated_H_M_cre <- IntegrateEmbeddings(anchorset = anchors_H_M, reductions = obj.both[['lsi']] )
+
+
+integrated_H_M_cre <- RunUMAP(
+  object = integrated_H_M_cre,
+  dims = 2:100,
+  reduction = 'integrated_dr'
+)
+
+integrated_H_M_cre$celltype[which(is.na(integrated_H_M_cre$celltype))]<-"unknown"
+
+integrated_H_M_cre<-AddMetaData(integrated_H_M_cre,species)
+
+
+pi4 <- DimPlot(integrated_H_M_cre, pt.size = 1,group.by='celltype',split.by = 'species',label = T,raster = F) + ggplot2::ggtitle("LSI 2:100") + theme(legend.position = "none") #theme(legend.position="bottom")#+ theme(legend.position = "none")
+
+DimPlot(integrated_H_M_cre, pt.size = 1,group.by='species')
+
+integrated_H_M<-integrated_H_M_cre
+```
+Lets look at the nearest neighbors situation
+
+```{r}
+integrated_H_M<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/Final_integration_all_bins_CCA.rds")
+
+integrated_H_M_narem<-subset(integrated_H_M, subset = celltype != "Unknown")
+integrated_H_M_narem_f<-subset(integrated_H_M_narem, subset = celltype != "unknown")
+
+
+Celltype_dictionary_top<-integrated_H_M_narem_f$celltype
+names(Celltype_dictionary_top)<-row.names(integrated_H_M_narem_f[[]])
+
+
+top_n_res<-top_n_neighbors(integrated_H_M_narem_f)
+
+write.table(top_n_res,"/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched.txt",quote = F,sep = "\t",row.names = T,col.names = T)
+ggplot(top_n_res,aes(x=species,y=percent_matched))+geom_violin()
+
+Celltype_dictionary_top<-integrated_H_M$celltype
+names(Celltype_dictionary_top)<-row.names(integrated_H_M[[]])
+system.time(
+integrated_mouse_neighbours<-integrated_neigbours(integrated_H_M,number_of_Str = 1)
+)
+system.time(
+integrated_mouse_neighbours33<-integrated_neigbours(integrated_H_M,number_of_Str = 5)
+)
+
+
+#or just use NNhelper lol
+
+M<-subset(integrated_H_M,subset=species == "mouse")
+H<-subset(integrated_H_M,species == "human")
+membed<-Embeddings(M,reduction = "integrated_dr")
+hembed<-Embeddings(H,reduction = "integrated_dr")
+
+
+
+integrated_mouse_neighbours_all<-NNHelper(data = hembed,query = membed,k = 50,method = "annoy",)
+
+Celltype_dictionary_top<-integrated_H_M$celltype
+names(Celltype_dictionary_top)<-row.names(integrated_H_M[[]])
+
+
+top50_mouse_neighbors<-matrix(row.names(H[[]])[integrated_mouse_neighbours_all@nn.idx],nrow = dim(integrated_mouse_neighbours_all@nn.idx)[1],ncol = dim(integrated_mouse_neighbours_all@nn.idx)[2])
+row.names(top50_mouse_neighbors)<-row.names(M[[]])
+
+top50_mouse_neighbors_ct<-matrix(Celltype_dictionary_top[top50_mouse_neighbors],nrow = dim(top50_mouse_neighbors)[1],ncol = dim(top50_mouse_neighbors)[2])
+row.names(top50_mouse_neighbors_ct)<-row.names(M[[]])
+
+#look at example of wht is around first cell
+names(which.max(as.matrix(table(top50_mouse_neighbors_ct[1,]))[,1]))
+Celltype_dictionary_top[row.names(top50_mouse_neighbors_ct)[1]]
+
+a<-apply(X = top50_mouse_neighbors_ct,MARGIN = 1,FUN = function(x){names(which.max(as.matrix(table(x))[,1]))})
+long_correspondence<-data.frame(mouse=Celltype_dictionary_top[names(a)],human=a)
+k50_neighbors<-as.matrix(table(long_correspondence$mouse,long_correspondence$human))
+k50_neighbors_mat<-matrix(k50_neighbors,nrow = dim(k50_neighbors)[1],ncol = dim(k50_neighbors)[2])
+row.names(k50_neighbors_mat)<-row.names(k50_neighbors)
+colnames(k50_neighbors_mat)<-colnames(k50_neighbors)
+
+
+col_fun = colorRamp2(c(-6,0,6), c("#08306b", "#bcbddc" ,"#67000d"))
+col_fun2 = colorRamp2(breaks = c(0,2000,4000),colors =  c("#08306b", "#bcbddc" ,"#67000d"))
+write.table(x = as.matrix(k50_neighbors_mat),file="/home/torkenczyk/H_M_chromatin_atlas/human_data/Mouse_k50_neighbors_mat.txt",sep="\t",quote=F)
+A2<-Heatmap(matrix = k50_neighbors_mat,col = col_fun2)
+A1<-Heatmap(matrix = t(scale(t(k50_neighbors_mat))),col = col_fun)
+
+pdf("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_conf_k50_zscored.pdf")
+A1
+dev.off()
+
+pdf("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_conf_k50.pdf")
+A2
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+```{r}
+alluve_comparison<-data.frame(cluster=integrated_H_M$integrated_snn_res.0.3,celltype=integrated_H_M$celltype,species=integrated_H_M$species)
+
+mouse_pre_int_temp<-AddMetaData(mouse_pre_int,predicted.id.tissue)
+
+compare_in_mouse<-data.frame(mouse_pre_int_temp[[]]$predicted.id ,mouse_pre_int_temp[[]]$tissue)
+
+row.names(compare_in_mouse)<-row.names(mouse_pre_int_temp[[]])
+
+transfer_mouse_all<-merge(compare_in_mouse,alluve_comparison,by="row.names")
+
+al_t<-paste(transfer_mouse_all$mouse_pre_int_temp.....tissue,str_split_fixed(transfer_mouse_all$mouse_pre_int_temp.....predicted.id,pattern = "_",n = 2)[,1],"Cluster",transfer_mouse_all$cluster,sep = "_")
+
+transfer_mouse_alluve<-data.frame(freq=as.matrix(table(al_t)))
+transfer_mouse_alluve_all<-data.frame(str_split_fixed(row.names(transfer_mouse_alluve),pattern = "_",n = 3),freq=transfer_mouse_alluve$freq)
+names(transfer_mouse_alluve_all)<-c("mouse","human","cluster","freq")
+#alluve in these
+al2<-ggplot(data = transfer_mouse_alluve_all,
+       aes(axis1 = mouse, axis2 = cluster, axis3 = human,
+           y = freq)) +
+  scale_x_discrete(limits = c("mouse", "cluster", "human"), expand = c(.2, .05)) +
+  xlab("") + ylab("Frequency")+
+  geom_alluvium(aes(fill = mouse)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_classic()+ theme(legend.position = "none")
+
+ggsave(al2,filename = "Transfer_tissue_sel_int.pdf",units = "cm",height = 10,width=15)
+ggsave(al1,filename = "Transfer_cellt_sel_int.pdf",units = "cm",height = 10,width=15)
+
+
+```
+
+try multiple number of bins
+```{r}
+#dependencies
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(EnsDb.Mmusculus.v79)
+library(EnsDb.Mmusculus.v75)
+library(ggplot2)
+library(patchwork)
+library(Signac)
+library(tidyr)
+library(Seurat)
+library(devtools)
+load_all("~/devel/seurat-private-feat-incrementalPCA/")
+load_all("~/devel/signac-private-master/")
+require(spam)
+require(spam64)
+library(reshape2)
+library(dplyr)
+
+human_all_atac<-readRDS("~/share_Yuhan/Human_5kb_bins.rds")
+mouse_select_atac<-readRDS("~/share_Yuhan/Mouse_5kb_bins.rds")
+
+
+
+human_all_atac$species<-"human"
+mouse_select_atac$species<-"mouse"
+species<-rbind(human_all_atac[["species"]],mouse_select_atac[["species"]])
+
+bins_select<-list.files("/home/torkenczyk/H_M_chromatin_atlas/human_data/bins_lsi_selected/")
+file_names<-paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/bins_lsi_selected/",bins_select)
+bins<-gsub(x=bins_select,replacement = "",pattern = "LSI_informed.bins.")
+bins<-gsub(x=bins,replacement = "",pattern = ".txt")
+
+j=0
+for (i in bins){
+print(i)
+peaks.use.str<-read.table(file=file_names[1])[,1]
+
+peaks.use<-StringToGRanges(peaks.use.str,sep = c("-","-"))
+
+#create a new Seurat object
+
+
+chrom_assay <- CreateChromatinAssay(
+  counts = GetAssayData(human_all_atac, assay = "humanPeaks", slot = "counts")[peaks.use.str, ],
+  ranges = peaks.use,
+  genome = "hg19"
+)
+
+human_pre_int <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = 'humanPeaksamp'
+)
+
+chrom_assay <- CreateChromatinAssay(
+  counts <- GetAssayData(mouse_select_atac, assay = "humanPeaks", slot = "counts")[peaks.use.str, ],
+  ranges = peaks.use,
+  genome = "hg19"
+)
+
+mouse_pre_int <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = 'humanPeaksamp'
+)
+
+# extract gene annotations from EnsDb
+annotations_human <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+
+
+DefaultAssay(mouse_pre_int)<-"humanPeaksamp"
+mouse_pre_int <- RunTFIDF(mouse_pre_int)
+mouse_pre_int <- FindTopFeatures(mouse_pre_int, min.cutoff = 50)
+mouse_pre_int <- RunSVD(mouse_pre_int)
+mouse_pre_int <- RunUMAP(mouse_pre_int, reduction = 'lsi', dims = 2:30)
+
+
+
+human_pre_int@assays$humanPeaksamp@key <- "atac_"
+
+DefaultAssay(human_pre_int)<-"humanPeaksamp"
+human_pre_int <- RunTFIDF(human_pre_int)
+human_pre_int <- FindTopFeatures(human_pre_int, min.cutoff = 50)
+human_pre_int <- RunSVD(human_pre_int)
+human_pre_int <- RunUMAP(human_pre_int, reduction = 'lsi', dims = 2:30)
+
+
+
+# find integration anchors between mouse and human
+anchors_H_M <- FindIntegrationAnchors( object.list=list(human_pre_int, mouse_pre_int),
+                                       anchor.features = rownames(human_pre_int),scale=F,sparse=TRUE,spam=TRUE,
+                                       assay = c('humanPeaksamp', 'humanPeaksamp'),
+                                       k.filter = NA
+)
+
+atac.feature <- intersect(rownames(human_pre_int ), rownames(mouse_pre_int))
+obj.both <- merge(human_pre_int, mouse_pre_int)
+VariableFeatures(obj.both) <- atac.feature
+obj.both <- RunSVD(object = obj.both, n = 100 )
+
+integrated_H_M_cre <- IntegrateEmbeddings(anchorset = anchors_H_M, reductions = obj.both[['lsi']] )
+
+
+integrated_H_M_cre <- RunUMAP(
+  object = integrated_H_M_cre,
+  dims = 2:100,
+  reduction = 'integrated_dr'
+)
+
+
+DimPlot(integrated_H_M_cre,group.by = "celltype",split.by = "species")
+
+all_meta<-integrated_H_M[[]]
+integrated_H_M_cre<-AddMetaData(integrated_H_M_cre,all_meta)
+
+DimPlot(integrated_H_M_cre,group.by = "celltype",label=T)
+saveRDS(integrated_H_M_cre,file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/H_M_int_100k_bins.rds")
+integrated_H_M<-integrated_H_M_cre
+
+integrated_H_M_narem<-subset(integrated_H_M, subset = celltype != "Unknown")
+integrated_H_M_narem_f<-subset(integrated_H_M_narem, subset = celltype != "unknown")
+
+Celltype_dictionary_top<-integrated_H_M_narem_f$celltype
+names(Celltype_dictionary_top)<-row.names(integrated_H_M_narem_f[[]])
+
+
+top_n_res<-top_n_neighbors(integrated_H_M_narem_f)
+top_n_res$annot<-"100k_bins"
+write.table(top_n_res,"/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_100k.txt",quote = F,sep = "\t",row.names = T,col.names = T)
+
+
+
+top_n_res_all<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched.txt",sep = "\t")
+top_n_res_all$annot<-"all_bins"
+
+top_n_comp<-rbind(top_n_res,top_n_res_all)
+
+top_n_comp<-rbind(top_n_res,top_n_res_all)
+
+a<-merge(top_n_res_all,top_n_res,by="row.names")
+
+a$diff=a$percent_matched.y-a$percent_matched.x
+
+
+ggplot(top_n_comp,aes(x=species,fill=annot,y=percent_matched))+geom_boxplot()
+
+ggplot(a,aes(x=species.x,y=diff))+geom_violin()
+
+write.table(a,"/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_250k_all_merged.txt",quote = F,sep = "\t",row.names = T,col.names = T)
+
+
+
+}
+
+
+#compare all
+
+
+bins100k<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_100k.txt",sep = "\t",)
+bins10k<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_10k.txt",sep = "\t")
+bins250k<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_250k.txt",sep = "\t")
+binsall<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched.txt",sep = "\t")
+
+
+
+comp10k=data.frame(comp=bins10k$percent_matched-binsall$percent_matched,annot=bins10k$annot,species=bins10k$species)
+comp100k=data.frame(comp=bins100k$percent_matched-binsall$percent_matched,annot=bins100k$annot,species=bins10k$species)
+comp250k=data.frame(comp=bins250k$percent_matched-binsall$percent_matched,annot=bins250k$annot,species=bins10k$species)
+
+compall<-rbind(comp10k,comp100k,comp250k)
+compall$annot<-factor(compall$annot,levels=c("10k_bins","100k_bins","250k_bins"))
+p<-ggplot(compall,aes(x=annot,fill=species,y=comp))+geom_violin()+theme_classic()+ylim(c(-0.4,0.4))+ylab("Percent neighbors matched by n bins - Percent neighbors matched by all bins")+xlab("")+annotate("text", x=1, y=-0.4, label= paste0("% <0, ",round(sum(comp10k$comp<0)/length(comp10k$comp),digits = 2)))+annotate("text", x=1, y=0.4, label= paste0("% >0, ",round(sum(comp10k$comp>0)/length(comp10k$comp),digits = 2)))+annotate("text", x=2, y=-0.4, label= paste0("% <0, ",round(sum(comp100k$comp<0)/length(comp100k$comp),digits = 2)))+annotate("text", x=2, y=0.4, label= paste0("% >0, ",round(sum(comp100k$comp>0)/length(comp100k$comp),digits = 2)))+annotate("text", x=3, y=-0.4, label= paste0("% <0, ",round(sum(comp250k$comp<0)/length(comp250k$comp),digits = 2)))+annotate("text", x=3, y=0.4, label= paste0("% >0, ",round(sum(comp250k$comp>0)/length(comp250k$comp),digits = 2)))+annotate("text", x=3, y=0.2, label= paste0("sd, ",round(sd(comp250k$comp),digits = 2)))+annotate("text", x=2, y=0.2, label= paste0("sd, ",round(sd(comp100k$comp),digits = 2)))+annotate("text", x=1, y=0.2, label= paste0("sd, ",round(sd(comp10k$comp),digits = 2)))
+
+sd(comp10k$comp)
+
+
+
+```
+
+

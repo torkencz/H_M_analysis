@@ -327,6 +327,61 @@ pdf("Mouse_PN_FET.pdf")
 H_3
 dev.off()
 
+#check for relative access and motif diff
+
+Expr<-AggregateExpression(feta_al_preg,assays = "peaks",group.by = "orig.ident",slot = "counts")
+Expr<-Expr$peaks[I_Ol,]/9682
+top200_i<-names(Expr[head(order(Expr),n=200)])
+
+Expr<-AggregateExpression(feta_al_preg,assays = "peaks",group.by = "orig.ident",slot = "counts")
+Expr<-Expr$peaks[HO_Ol,]/9682
+top200_h<-names(Expr[head(order(Expr),n=200)])
+
+
+
+pfh <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = FALSE)
+)
+
+rowRanges<-  StringToGRanges(row.names(feta_al_preg))
+hg19r<-row.names(feta_al_preg)
+hg19_fixed<-hg19r[-which(seqnames(rowRanges) == "chr17")[1]]
+
+
+
+A<-GetAssayData(feta_al_preg,slot = "counts",assay = "peaks")[hg19_fixed,]
+f<-Fragments(feta_al_preg)
+rowRanges<-StringToGRanges(hg19_fixed)
+
+
+feta_al_preg[["hg19_fixed"]]<- CreateChromatinAssay(
+  counts = A,
+  sep = c("-", "-"),
+  genome = "hg19",
+  fragments = f
+)
+
+DefaultAssay(feta_al_preg)<-"hg19_fixed"
+
+
+# add motif information
+feta_al_preg <- AddMotifs(
+  object = feta_al_preg,
+  genome = BSgenome.Hsapiens.UCSC.hg19,
+  pfm = pfh
+)
+
+# add motifs
+enriched.motifs_shared <- FindMotifs(
+  object = feta_al_preg,
+  features = top200,background = I_Ol
+)
+
+enriched.motifs_human <- FindMotifs(
+  object = feta_al_preg,
+  features = top200_h,background = HO_Ol
+)
 
 
 #easier to do ptime

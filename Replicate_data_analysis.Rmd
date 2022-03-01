@@ -649,7 +649,7 @@ VlnPlot(human_pn_val,features = names(query_mot),group.by = "ctorig")|VlnPlot(mo
 all<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/chromvar_shared.txt")
 
 ls<-unlist(GetMotifData(object = human_pn_val, assay = "hg19_fixed", slot = "motif.names"))
-motif_labels<-ls[match(all,names(ls))]
+motif_labels<-ls[match(all$x,names(ls))]
 
 p1<-DotPlot(human_pn_val,assay = "chromvar",features =  all,cols=c('#3182bd',"#de2d26"),idents = "Pneumocytes",) + theme(legend.position="top")+ggtitle(label = "Human") +ylab(label = "")
 ggsave(p1,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Human_chromvar_validation_dotplot.pdf",width = 10,height = 7.5)
@@ -681,11 +681,14 @@ human_in_orig=c("Myofibroblasts", "B-lymphocytes", "Pneumocytes","T-lymphocytes"
 
 Idents(human_pn_val)<-factor(Idents(human_pn_val),levels=c("Myofibroblasts","B-lymphocytes","Pneumocytes","T-lymphocytes","Fibroblasts","pulmonary_neuroendocrine","Macrophage_Monocyte_Neutrophils","Endothelial cells","Erythrocyte","Pericytes"))
 
-p1_orig<-DotPlot(human_all_atac,idents = human_in_orig,assay = "chromvar",features =  all[-c(31:39,57:61)],cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human original") +ylab(label = "")
-p1_orig<-p1_orig + scale_x_discrete(labels=motif_labels[-c(31:39,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
+
+
+
+p1_orig<-DotPlot(human_all_atac,assay = "chromvar",idents = human_in_orig,features =  all$x[-c(11:15,26,27,33:42,48:51,57:61)],cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human original") +ylab(label = "")
+p1_orig<-p1_orig + scale_x_discrete(labels=motif_labels[-c(11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
 
 #reordered
-validation_1<-DotPlot(human_pn_val,assay = "chromvar",features =  all[-c(31:39,57:61)],cols=c('#3182bd',"#de2d26"),idents = human_in,) + theme(legend.position="top")+ggtitle(label = "Human validation") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(31:39,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
+validation_1<-DotPlot(human_pn_val,assay = "chromvar",features =  all$x[-c(11:15,26,27,33:42,48:51,57:61)],cols=c('#3182bd',"#de2d26"),idents = human_in)+ theme(legend.position="top")+ggtitle(label = "Human validation") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")+theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
 
 
 p_human_human_validation_plot<-p1_orig|validation_1
@@ -706,9 +709,153 @@ mouse_in_orig=c("B-lymphocytes", "Pneumocytes","T-lymphocytes","Fibroblasts","Ma
 
 Idents(mouse_pn_val)<-factor(Idents(mouse_pn_val),levels=c("B-lymphocytes","Pneumocytes","T-lymphocytes","Fibroblasts","Macrophage_Monocyte_Neutrophils","AVSM","Endothelial cells","Mesothelial","Pericytes"))
 
-p2_orig<-DotPlot(mouse_select_atac,idents = human_in_orig,assay = "chromvar",features =  all,cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human original") +ylab(label = "")
+features =  all$x[-c(1:5,11:15,26,27,33:42,48:51,57:61)]
 
-features =  all[-c(31:39,57:61)]
+
+p2_orig<-DotPlot(mouse_select_atac,idents = mouse_in_orig,assay = "chromvar",features =  features,cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse original") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(1:5,11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
+
+validation_2<-DotPlot(mouse_pn_val,idents = mouse_in,assay = "chromvar",features =  features,cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse validation") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(1:5,11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")+theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
+
+
+p_mouse_mouse_validation_plot<-p2_orig|validation_2
+
+
+ggsave(p_mouse_mouse_validation_plot,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/mouse_mouse_validation_dotplot.pdf",width = 20,height = 7.5)
+
+#Now lets look at whether mouse only and human only reproduces
+DefaultAssay(human_all_atac)<-"chromvar"
+
+differential.activity.h.o <- FindAllMarkers(
+  object = human_all_atac,
+  only.pos = TRUE,
+  test.use = 'LR',
+  latent.vars = 'nCount_cre'
+)
+
+#what if we use the mm9 calculated chromvar
+library(BSgenome.Mmusculus.UCSC.mm9)
+mouse_select_atac <- RunChromVAR(
+  object = mouse_select_atac,assay = "mm9",new.assay.name = "chromvar.mm9",
+  genome = BSgenome.Mmusculus.UCSC.mm9
+)
+
+#calculate cell type specific Tfs
+DefaultAssay(mouse_select_atac)<-"chromvar.mm9"
+
+differential.activity.m.o <- FindAllMarkers(
+  object = mouse_select_atac,
+  only.pos = TRUE,
+  test.use = 'LR',
+  latent.vars = 'nCount_mm9'
+)
+
+names(differential.activity.h.o)<-paste(names(differential.activity.h.o),"human_orig",sep = "_")
+names(differential.activity.m.o)<-paste(names(differential.activity.m.o),"mouse_orig",sep = "_")
+
+pos_list_h_m<-list()
+
+for (i in (human_in_orig))
+{
+original_merged<-as.matrix(merge(x=differential.activity.h.o[differential.activity.h.o$cluster_human_orig==i,],y=differential.activity.m.o[differential.activity.m.o$cluster_mouse_orig==i,],by.x="gene_human_orig",by.y="gene_mouse_orig",all=T))
+original_merged[is.na(original_merged)] <- 100
+original_merged<-as.data.frame(original_merged)
+#original_merged_only_pos<-original_merged[original_merged$avg_log2FC_human_orig > 0 | original_merged$avg_log2FC_mouse_orig > 0,]
+#rank human
+original_merged<-original_merged[with(original_merged, order(as.numeric(p_val_adj_human_orig),-as.numeric(avg_log2FC_human_orig))),]
+original_merged$rank.human<-c(1:length(original_merged$p_val_adj_human_orig))
+#rank mouse
+original_merged<-original_merged[with(original_merged, order(as.numeric(p_val_adj_mouse_orig),-as.numeric(avg_log2FC_mouse_orig))),]
+original_merged$rank.mouse<-c(1:length(original_merged$p_val_adj_mouse_orig))
+
+original_merged$rank.avg<-(original_merged$rank.mouse+original_merged$rank.human)/2
+  
+  
+#order differentce
+original_merged$rankdiff.mouse<-original_merged$rank.mouse-(original_merged$rank.human+original_merged$rank.avg)/2
+original_merged$rankdiff.human<-original_merged$rank.human-(original_merged$rank.mouse+original_merged$rank.avg)/2
+original_merged$rankdiff.intersect<-original_merged$rank.avg-(original_merged$rank.mouse+original_merged$rank.human)/2
+
+
+pos_list_h_m[[i]]<-original_merged
+}
+
+human_mouse_only_motifs_chromvar<-data.frame(cell_type=character(),motifs_h=character(),motifs_m=character())
+
+for (i in (human_in_orig))
+{
+top5_mouse<-head(pos_list_h_m[[i]][order(pos_list_h_m[[i]]$rankdiff.mouse),1],n=5)
+top5_human<-head(pos_list_h_m[[i]][order(pos_list_h_m[[i]]$rankdiff.human),1],n=5)
+
+ct_only<-data.frame(cell_type=rep(i,times=5),motifs_h=top5_human,motifs_m=top5_mouse)
+
+human_mouse_only_motifs_chromvar<-rbind(human_mouse_only_motifs_chromvar,ct_only) 
+
+}
+
+#now plot
+ls<-unlist(GetMotifData(object = human_all_atac, assay = "cre", slot = "motif.names"))
+motif_labels_h<-ls[match(unique(human_mouse_only_motifs_chromvar$motifs_h),names(ls))]
+
+p1_orig_ho<-DotPlot(human_all_atac,assay = "chromvar",idents = human_in_orig,features =  unique(human_mouse_only_motifs_chromvar$motifs_h),cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human original human only") +ylab(label = "")
+p2_orig_ho<-DotPlot(mouse_select_atac,assay = "chromvar.mm9",idents = mouse_in_orig,features =  unique(human_mouse_only_motifs_chromvar$motifs_h),cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse original human only") +ylab(label = "")
+
+
+p1_orig_ho<-p1_orig_ho + scale_x_discrete(labels=motif_labels_h)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
+p2_orig_ho<-p2_orig_ho + scale_x_discrete(labels=motif_labels_h)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
+
+p1_orig_ho+p2_orig_ho
+
+ggsave(p1_orig_ho+p2_orig_ho,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Human_only_orig_dotplot.pdf",width = 20,height = 7.5)
+
+
+
+#now plot
+ls<-unlist(GetMotifData(object = human_all_atac, assay = "cre", slot = "motif.names"))
+motif_labels_m<-ls[match(unique(human_mouse_only_motifs_chromvar$motifs_m),names(ls))]
+
+
+p1_orig_mo<-DotPlot(human_all_atac,assay = "chromvar",idents = mouse_in_orig,features =  unique(human_mouse_only_motifs_chromvar$motifs_m[-c(1:5)]),cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human original mouse only") +ylab(label = "")
+p2_orig_mo<-DotPlot(mouse_select_atac,assay = "chromvar.mm9",idents = mouse_in_orig,features =  unique(human_mouse_only_motifs_chromvar$motifs_m[-c(1:5)]),cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse original mouse only") +ylab(label = "")
+
+
+p1_orig_mo<-p1_orig_mo + scale_x_discrete(labels=motif_labels_m)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
+p2_orig_mo<-p2_orig_mo + scale_x_discrete(labels=motif_labels_m)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
+
+
+p1_orig_mo+p2_orig_mo
+
+
+ggsave(p1_orig_mo+p2_orig_mo,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_only_orig_dotplot.pdf",width = 20,height = 7.5)
+
+
+#use these TFs for the validation data
+
+validation_2_a_m<-DotPlot(human_pn_val,idents = mouse_in,assay = "chromvar",features =  unique(human_mouse_only_motifs_chromvar$motifs_m[-c(1:5)]),cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human validation mouse only") +ylab(label = "")+ scale_x_discrete(labels=motif_labels_m)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")+theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
+
+
+validation_2_b_m<-DotPlot(mouse_pn_val,idents = mouse_in,assay = "chromvar",features =  unique(human_mouse_only_motifs_chromvar$motifs_m[-c(1:5)]),cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse validation mouse only") +ylab(label = "")+ scale_x_discrete(labels=motif_labels_m)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")+theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
+
+
+validation_2_a_h<-DotPlot(human_pn_val,idents = human_in,assay = "chromvar",features =  unique(human_mouse_only_motifs_chromvar$motifs_h),cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human validation human only") +ylab(label = "")+ scale_x_discrete(labels=motif_labels_h)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")+theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
+
+
+validation_2_b_h<-DotPlot(mouse_pn_val,idents = mouse_in,assay = "chromvar",features =  unique(human_mouse_only_motifs_chromvar$motifs_h),cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse validation human only") +ylab(label = "")+ scale_x_discrete(labels=motif_labels_h)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")+theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
+
+
+p1_orig_ho+validation_2_a_h
+p2_orig_ho+validation_2_b_h
+
+p1_orig_mo+validation_2_a_m
+p2_orig_mo+validation_2_b_m
+
+
+ggsave(p1_orig_ho+validation_2_a_h,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Human_val_orig_dotplot.pdf",width = 20,height = 7.5)
+
+ggsave(p2_orig_ho+validation_2_b_h,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_val_orig_h_only_dotplot.pdf",width = 20,height = 7.5)
+
+ggsave(p1_orig_mo+validation_2_a_m,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Human_val_orig_m_only_dotplot.pdf",width = 20,height = 7.5)
+
+ggsave(p2_orig_mo+validation_2_b_m,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_val_orig_m_only_dotplot.pdf",width = 20,height = 7.5)
 
 
 

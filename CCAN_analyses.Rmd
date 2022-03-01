@@ -379,6 +379,21 @@ H<-t(scale(t(acast(percent_overlap_h, celltype~group, value.var="frac"))))
 HM<-Heatmap(H)+Heatmap(M)
 
 write.table(percent_overlap,file="Percent_overlap_CCANs.txt",quote = F,sep = "\t",row.names = T,col.names = T)
+
+
+p1<-ggplot(percent_overlap,aes(x=CCAN,fill=group,y=frac))+geom_boxplot()+theme_classic()+ylab("Fraction of DA peaks in a CCAN/Fraction of all peaks in a CCAN")
+
+library(ggpubr)
+
+# Visualize: Specify the comparisons you want
+my_comparisons <- list( c("human", "shared"), c("mouse", "shared"))
+p2<-ggboxplot(percent_overlap, x = "group", y = "frac",, palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 50)+ylab("Fraction of DA peaks in a CCAN/Fraction of all peaks in a CCAN")
+
+ggsave(p1,filename = "~/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Comparison_CCAN_shared_unique_CCAN_breakdown.pdf")
+ggsave(p2,filename = "~/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Comparison_CCAN_shared_unique.pdf")
+
 ```
 
 
@@ -561,16 +576,77 @@ write.table(master_ccan_df,file="CCAN_human_start_end_hg38_mm9_mm10_lift02mathc.
 
 master_ccan_df[order(master_ccan_df$Hepatocytes),2][2]
 
-#next step ccan peaks called
+#larger CCAN less specific?
+
+ggplot(master_ccan_df[master_ccan_df$human_TSS_dist==0,],aes(x=number.of.peaks,y=Enterocytes))+geom_point()
+
+#not enough proof
+
+A<-umap::umap(d = na.omit(((s_h_ccan-s_m_ccan+s_m_ccan))))
+B<-umap::umap(d = na.omit(s_h_ccan-s_m_ccan+2*s_m_ccan-s_h_ccan))
+
+Acomb<-s_h_ccan
+Bcomb<-s_m_ccan
+
+names(Acomb)<-paste0("human_",names(s_h_ccan))
+names(Bcomb)<-paste0("mouse_",names(s_m_ccan))
+
+AB<-cbind(Acomb,Bcomb)
+
+AB_u<-umap::umap(d = na.omit(AB))
+
+pmax(na.omit(s_h_ccan-s_m_ccan+s_m_ccan))
+
+h_max<-apply(na.omit(s_h_ccan-s_m_ccan+s_m_ccan), 1, max)
+h_max_names<-apply(na.omit(s_h_ccan-s_m_ccan+s_m_ccan), 1, FUN=function(x){names(s_h_ccan)[which.max(x)]})
+m_max<-apply(na.omit(s_h_ccan-s_m_ccan+2*s_m_ccan-s_h_ccan), 1, max)
+m_max_names<-apply(na.omit(s_h_ccan-s_m_ccan+2*s_m_ccan-s_h_ccan), 1, FUN=function(x){names(s_h_ccan)[which.max(x)]})
 
 
 
-number=3
-ct="Hepatocytes"
-mincut=0.1
+
+AB<-as.data.frame(AB_u$layout)
+
+AB$h_max<-h_max
+AB$m_max<-m_max
+AB$h_max_names<-h_max_names
+AB$m_max_names<-m_max_names
+AB$ccan<-row.names(AB)
 
 
-master_ccan_df<-read.delim(file = "/home/torkenczyk/git_repos/H_M_analysis/CCAN_human_start_end_hg38_mm9_mm10_lift02mathc.txt")
+G<-data.frame(ccan=paste0("CCAN_CCAN_",master_ccan_df$ccan),number.of.peaks=master_ccan_df$number.of.peaks)
+AB_merg<-merge(AB,G,by="ccan")
+
+
+C<-cbind(as.data.frame(A$layout),na.omit(s_h_ccan-s_m_ccan+s_m_ccan))
+C2<-cbind(as.data.frame(B$layout),na.omit(s_h_ccan-s_m_ccan+s_m_ccan))
+D<-cbind(as.data.frame(B$layout),na.omit(s_h_ccan-s_m_ccan+2*s_m_ccan-s_h_ccan))
+D2<-cbind(as.data.frame(A$layout),na.omit(s_h_ccan-s_m_ccan+2*s_m_ccan-s_h_ccan))
+
+plot_list<-list()
+for (ct in names(s_h_ccan)) {
+print(ct)
+p1h<-ggplot(C2,aes_string(x="V1",y="V2",color=paste0(ct)))+geom_point()+theme_classic()+ylab("UMAP2")+xlab("UMAP1")+theme(legend.position = "bottom")
+p2m<-ggplot(D,aes_string(x="V1",y="V2",color=paste0(ct)))+geom_point()+theme_classic()+ylab("UMAP2")+xlab("UMAP1")+theme(legend.position = "bottom")
+plot_list[[ct]]<-p1h|p2m
+
+}
+
+ph_names<-ggplot(AB,aes(x=V1,y=V2,color=h_max_names))+geom_point()+theme_classic()+ylab("UMAP2")+xlab("UMAP1")+theme(legend.position = "bottom")
+pm_names<-ggplot(AB,aes(x=V1,y=V2,color=m_max_names))+geom_point()+theme_classic()+ylab("UMAP2")+xlab("UMAP1")+theme(legend.position = "bottom")
+
+ph_vals<-ggplot(AB,aes(x=V1,y=V2,color=h_max))+geom_point()+theme_classic()+ylab("UMAP2")+xlab("UMAP1")+theme(legend.position = "bottom")
+pm_vals<-ggplot(AB,aes(x=V1,y=V2,color=m_max))+geom_point()+theme_classic()+ylab("UMAP2")+xlab("UMAP1")+theme(legend.position = "bottom")
+
+wrap_plots(list(ph_names,ph_vals,pm_names,pm_vals),ncol = 2,nrow = 2)
+
+pnumb<-ggplot(AB_merg,aes(x=V1,y=V2,color=log10(number.of.peaks)))+geom_point()+theme_classic()+ylab("UMAP2")+xlab("UMAP1")+theme(legend.position = "bottom")
+
+pnumb2<-ggplot(AB_merg,aes(x=h_max,y=number.of.peaks))+geom_point()+theme_classic()+xlab("human max score")+ylab("log10(number of peaks)")+theme(legend.position = "bottom")
+
+#plot some of them
+
+master_ccan_df<-read.delim(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/CCAN_human_start_end_hg38_mm9_mm10_lift02mathc.txt")
 human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data//active_use_objects/Human_added_links.rds")
 mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data//active_use_objects/Mouse_added_links.rds")
 ccans_mouse_hg38<-read.delim(file="/home/torkenczyk/git_repos/H_M_analysis/Mouse_ccans_cicero_hg38.txt")
@@ -667,6 +743,67 @@ S<-plot_CCAN_species(number=1,mincut = 0.15,ct = "Smooth.muscle.cells")
 
 
 png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons_yaxe_human_VAL=.png"),width = 20,height=28,units = "cm",res=300)
+
+
+
+```
+
+Might be easy to show GA across mouse and human as shared or unique
+
+```{r}
+
+human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
+mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+
+gene.activities<-GeneActivity(object = human,assay = "cre")
+
+# add the gene activity matrix to the Seurat object as a new assay
+human[['RNA']] <- CreateAssayObject(counts = gene.activities)
+human <- NormalizeData(
+  object = human,
+  assay = 'RNA',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(human$nCount_RNA)
+)
+
+gene.activities<-GeneActivity(object = mouse,assay = "cre")
+
+# add the gene activity matrix to the Seurat object as a new assay
+mouse[['RNA']] <- CreateAssayObject(counts = gene.activities)
+mouse <- NormalizeData(
+  object = mouse,
+  assay = 'RNA',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(mouse$nCount_RNA)
+)
+
+DefaultAssay(mouse)<-"RNA"
+DefaultAssay(human)<-"RNA"
+
+H_genes<-FindAllMarkers(human)
+
+M_genes<-FindAllMarkers(mouse)
+
+sh_genes<-list()
+genes_to_plot<-c()
+for (ct in levels(as.factor(H_genes$cluster)))
+{
+H_pos<-H_genes[H_genes$avg_log2FC>0 & H_genes$cluster==ct,]
+M_pos<-M_genes[M_genes$avg_log2FC>0 & M_genes$cluster==ct,]
+sh_genes[[ct]]<-merge(H_pos,M_pos,by="gene")
+genes_to_plot=c(genes_to_plot,head(sh_genes[[ct]]$gene,n=5))
+}
+
+
+
+
+p1<-DotPlot(human,features = unique(genes_to_plot))+theme(legend.position="top")+ggtitle(label = "Human")+xlab(label = "")
+p2<-DotPlot(mouse,features = unique(genes_to_plot))+theme()+theme(legend.position="top")+ggtitle(label = "Mouse") +theme(axis.title.y=element_blank(),axis.text.y=element_blank(), axis.ticks.y=element_blank())+xlab(label = "")
+
+
+
+DotPlot(human,features = c("MYH7","MYH6","SHANK3","SPARC","MPRIP","CNN1","MYH11","ZFHX3","TAGLN","SEPT9","CARMN","MYH11"))
+DotPlot(mouse,features = c("MYH7","MYH6","SHANK3","SPARC","MPRIP","CNN1","ZFHX3","TAGLN","SEPT9","CARMN","MYH11"))
 
 
 ```

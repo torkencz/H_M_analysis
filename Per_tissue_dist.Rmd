@@ -5,9 +5,88 @@ date: "11/15/2021"
 output: html_document
 ---
 
+internal functions
+```{r}
+
+corrected_reads_peaks<-function(object,assay,peaks,group_name,species=NULL){
+
+list_of_matrices=list()
+  
+if(is.null(species)) {
+species=c("mouse","human")
+}
+
+for (sp in species){
+#do it per species
+print(sp)
+object_sub<-subset(object,subset = species == paste0(sp))
+object_sub<-BinarizeCounts(object_sub)
+
+average_count_per_group<-AverageExpression(object = object_sub,assay = assay,slot = "counts",group.by = group_name)
+average_count_per_group<-average_count_per_group[["cre"]][peaks,]
+
+groups<-as.factor(object_sub[[]][,group_name])
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(object_sub$nFeature_cre),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`object_sub$nFeature_cre`))/log10(median_nfeature_category$`object_sub$nFeature_cre`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+print("got here")
+return_matrix<-average_count_per_group*t(replicate(dim(average_count_per_group)[1],norm_factor$`median_nfeature_category$norm_complexity`))
+
+
+list_of_matrices[[paste0(sp)]]=return_matrix
+}
+
+
+return(list_of_matrices)
+
+
+}
+
+C<-corrected_reads_peaks(object =all,assay = "cre",peaks = top_sites,group_name = "CT")
+
+
+
+deviation_across_peaks<-function(object,assay="cre",peaks)
+{
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(chromVAR)
+library(motifmatchr)
+library(Matrix)
+library(SummarizedExperiment)
+have_reads<-human_all_atac[[assay]][[]][object[[assay]][[]]$count>0,]  
+rowRanges<-StringToGRanges(row.names(have_reads))
+matched<-row.names(have_reads) %in% peaks
+matched_df=data.frame(peaks=matched)
+anno <- getAnnotations(annotations = matched_df, rowRanges = rowRanges)
+fragments <- SummarizedExperiment(assays = list(counts = GetAssayData(object, assay = assay, slot = "counts")[row.names(have_reads),]), rowRanges = rowRanges)
+fragments <- filterPeaks(fragments, non_overlapping = TRUE)
+fragments <- addGCBias(fragments, genome=BSgenome.Hsapiens.UCSC.hg38)
+dev <- computeDeviations(object = fragments, annotations = anno)
+
+chromvar.hz <- SummarizedExperiment::assays(dev)[[2]]
+return(chromvar.hz)
+
+}
+
+
+
+
+```
+
+
 PER tissue distance analyses
 ```{r}
 #analysis of per tissue discance
+
+human_all_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
+mouse_select_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+
+
+
 library(lsa)
 library(reshape2)
 median_nfeature_category_human<-aggregate(as.data.frame(human_all_atac$nFeature_cre),by=list(human_all_atac$handannot),FUN=median)
@@ -136,7 +215,7 @@ correction_h<-mean(log10(median_nfeature_category_human$`human_all_atac$nFeature
 human_list_distances_orig[[i]]<-h_s_o*correction_h
 }
 
-#calculate distance between MH with original labels in mouse
+#calculate distance between M-H distance with original labels in mouse starts
 mouse_list_distances_orig<-list()
 Idents(mouse_select_atac)<-mouse_select_atac$cell_label
 median_nfeature_category_mouse2<-aggregate(as.data.frame(mouse_select_atac$nFeature_cre),by=list(mouse_select_atac$cell_label),FUN=median)
@@ -156,7 +235,8 @@ correction_m<-mean(log10(median_nfeature_category_mouse2$`mouse_select_atac$nFea
 mouse_list_distances_orig[[i]]<-m_s_o*correction_m
 }
 
-hm_avg_dist_orig=data.frame(human=character(),mouse=character(),distance=double())
+
+hm_avg_dist_orig=data.frame(human=character(),mouse=character(),type=character(),distance=double())
 for (i in levels(as.factor(mouse_select_atac$cell_label)))
 {
   for (j in levels(as.factor(human_all_atac$celltype)))
@@ -165,21 +245,35 @@ print(paste0("mouse: ",i," human: ",j))
  
 m1<-human_list_distances_orig[[j]]
 m2<-mouse_list_distances_orig[[i]]
-temp<-data.frame(human=j,mouse=i,distance=cosine(x=m1[,1],y=m2[,1])[1,1])
+temp<-data.frame(human=j,mouse=i,type="cosine",distance=cosine(x=m1[,1],y=m2[,1])[1,1])
+hm_avg_dist_orig<-rbind(hm_avg_dist_orig,temp)
+temp<-data.frame(human=j,mouse=i,type="euc",distance=distance(rbind(m1[,1],y=m2[,1]),method = "euclidean"))
 hm_avg_dist_orig<-rbind(hm_avg_dist_orig,temp)
 }
 }
 
-data_wide_hm_orig <- dcast(hm_avg_dist_orig, human ~ mouse, value.var="distance")
+hm_avg_dist_orig_cosine<-hm_avg_dist_orig[hm_avg_dist_orig$type=="cosine",]
+hm_avg_dist_orig_euc<-hm_avg_dist_orig[hm_avg_dist_orig$type=="euc",]
+
+
+data_wide_hm_orig <- dcast(hm_avg_dist_orig_cosine, human ~ mouse, value.var="distance")
 row.names(data_wide_hm_orig)<-data_wide_hm_orig$human
 data_wide_hm_orig$human<-NULL
 library(circlize)
 col_fun = colorRamp2(c(-3,0,3), c("#08306b", "#bcbddc" ,"#67000d"))
 
-Heatmap(as.matrix(data_wide_hm_orig),cluster_columns = F,cluster_rows = F,col = col_fun)
+write.table(t(scale(t(scale(as.matrix(data_wide_hm_orig))))),"/home/torkenczyk/H_M_chromatin_atlas/human_data/Z_scored.orig.labels.txt",quote=F,sep="\t")
 
+
+p<-Heatmap(t(scale(t(scale(as.matrix(data_wide_hm_orig))))),cluster_columns = T,cluster_rows = T,col = col_fun)
+pdf("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Distance_zscored_cosine_similarity.pdf",width = 10,height=8)
+p
+dev.off()
 
 #here we need to highlight correlating sites
+#subset to cells within a group randomly and then correlate across those subsets for all peaks
+#might not use in the end
+
 Idents(human_all_atac)<-human_all_atac$celltype
 Idents(mouse_select_atac)<-mouse_select_atac$cell_label
 #look at what proportion of sites correlate between Human and Mouse Hepatocytes
@@ -577,12 +671,11 @@ hd_m<-Heatmap(plot_m,cluster_columns = F,cluster_rows = F,name = "Average cosine
 hd_m+hd_h
 
 
-#What is the cosine similarity directly between mouse and human
 ```
 
 
 ```{r}
-#distance calculation based on R suggestion
+#distance calculation based on R suggestion. Here we calculate the per site correlation
 
 human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
 mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
@@ -646,10 +739,20 @@ library(parallel)
 # Example registering clusters
 cl <- parallel::makeCluster(10)
 doParallel::registerDoParallel(cl) 
+
+
+
 hm_avg_dist=data.frame(peak=character(),cosine=double(),eucl=double(),man=double(),jac=double())
-avg_list<-list()
+
 system.time(
-x<-foreach (i = 1:753741,  .combine='rbind' ,.packages = c("philentropy","lsa","rlist")) %dopar% {
+for (j in c(0:14))
+{
+
+start=j*50000+1
+end=(j+1)*50000
+
+
+x<-foreach (i = start:end,  .combine='rbind' ,.packages = c("philentropy","lsa","rlist")) %dopar% {
 m1<-human_dist[,i]
 m2<-mouse_dist[,i]
 jac<-distance(rbind(m1,m2),method = "jaccard")
@@ -658,8 +761,600 @@ man<-distance(rbind(m1,m2),method = "manhattan")
 temp<-data.frame(peak=colnames(human_dist)[i],cosine=cosine(x=m1,y=m2)[1,1],eucl=euc,man=man,jac=jac)
 return(temp)
 }
-)
 
-write.table(x,"/home/torkenczyk/H_M_chromatin_atlas/human_data/Human_mouse_overall_distances.txt",quote = F,row.names = F,col.names = T)
+hm_avg_dist<-rbind(hm_avg_dist,x)
+
+}
+)
+write.table(hm_avg_dist,"/home/torkenczyk/H_M_chromatin_atlas/human_data/Human_mouse_overall_distances.txt",quote = F,row.names = F,col.names = T)
+
+ p1<-ggplot(hm_avg_dist,aes(x=hm_avg_dist$cosine))+geom_histogram()+theme_classic()+xlab(label = "cosine similarity")+ylab(label = "Count")
+
+ p2<-ggplot(hm_avg_dist,aes(x=hm_avg_dist$eucl))+geom_histogram()+theme_classic()+xlab(label = "Eucl dist")+ylab(label = "Log10(Count)")+scale_y_continuous(trans="log10")
+
+
+ p3<-ggplot(hm_avg_dist,aes(x=hm_avg_dist$man))+geom_histogram()+theme_classic()+xlab(label = "Manhattan distance")+ylab(label = "Count")
+
+ 
+#see deviation in 10 groups along y axis
+human_all_atac[["Deviation_DA_mouse"]]<-NULL
+human_all_atac[["Deviation_DA_human"]]<-NULL
+human_all_atac[["Deviation_DA_int"]]<-NULL
+human_all_atac[["chromvar"]]<-NULL
+  
+mouse_select_atac[["Deviation_DA_mouse"]]<-NULL
+mouse_select_atac[["Deviation_DA_human"]]<-NULL
+mouse_select_atac[["Deviation_DA_int"]]<-NULL
+mouse_select_atac[["chromvar"]]<-NULL
+human_all_atac$species<-"human"
+mouse_select_atac$species<-"mouse"
+
+
+
+
+#created unintegrated assay
+all<-merge(human_all_atac,mouse_select_atac)
+have_reads_h<-all[["cre"]][[]][all[["cre"]][[]]$count>0,]
+cosine_dist<-na.omit(hm_avg_dist)
+#define groups
+groups=kmeans(na.omit(cosine_dist$cosine),centers = 10) 
+cosine_dist$groups<-as.factor(groups$cluster)
+
+#create true or false dataframe for deviation
+matched_summary<-list()
+for (i in levels(cosine_dist$groups))
+{
+peaks_str<-cosine_dist[cosine_dist$groups==i,1]
+matched<-row.names(have_reads_h) %in% peaks_str
+matched_summary[[paste0("Group",i)]]<-matched
+}
+
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(chromVAR)
+library(motifmatchr)
+library(Matrix)
+library(SummarizedExperiment)
+matched_df<-as.data.frame(do.call(cbind, matched_summary))
+rowRanges<-StringToGRanges(row.names(have_reads_h))
+
+
+
+anno<-getAnnotations(annotations = matched_df, rowRanges = rowRanges)
+fragments <- SummarizedExperiment(assays = list(counts = GetAssayData(all, assay = "cre", slot = "counts")[row.names(have_reads_h),]), rowRanges = rowRanges)
+fragments <- filterPeaks(fragments, non_overlapping = TRUE)
+fragments <- addGCBias(fragments, genome = BSgenome.Hsapiens.UCSC.hg38)
+dev_10g <- computeDeviations(object = fragments, annotations = anno)
+chromvar.hz <- SummarizedExperiment::assays(dev_10g)[[2]]
+all[["Deviation10g"]] <- CreateAssayObject(data = chromvar.hz)
+DefaultAssay(all)<-"Deviation10g"
+
+a<-na.omit(all[["celltype"]])
+b<-na.omit(all[["cell_label"]])
+names(a)<-"CT"
+names(b)<-"CT"
+all<-AddMetaData(all,rbind(a,b))
+
+p2<-VlnPlot(all,group.by = "CT",split.by = "species",features = row.names(all)[1])
+
+ p1<-ggplot(cosine_dist,aes(x=cosine,fill=groups))+geom_histogram()+theme_classic()+xlab(label = "cosine similarity")+ylab(label = "Count")
+
+#this is not working maybe showing top middle
+
+ shadesOfGrey <- colorRampPalette(c("grey0", "grey80"))
+ 
+p1<-ggplot(cosine_dist,aes(x=cosine,fill=groups))+geom_histogram()+theme_classic()+xlab(label = "cosine similarity")+ylab(label = "Count")+scale_fill_manual(values=shadesOfGrey(10))
+
+ggsave(p1,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/Cosine_sim_10_groups.pdf")
+
+
+
+ #number 5 is the highest
+ groups 
+ top_sites<-cosine_dist[cosine_dist$groups==5,1]
+C<-corrected_reads_peaks(object =all,assay = "cre",peaks = top_sites,group_name = "CT")
+
+H<-Heatmap(C$mouse,cluster_rows = F,cluster_columns = F,show_row_names = F)
+H2<-Heatmap(C$human,cluster_rows = T,cluster_columns = F,show_row_names = F)
+p<-H2+H
+
+pdf("/home/torkenczyk/H_M_chromatin_atlas/human_data/Top_conserved_sites_corr_reads.pdf")
+p
+dev.off()
+
+#now lets do top middle and bottom thousand
+
+cosine_dist<-cosine_dist[order(cosine_dist$cosine),]
+topmidbot<-c(tail(cosine_dist, n=5000)[,1],sample(cosine_dist[cosine_dist$groups==10,1],replace = F,size = 5000),head(cosine_dist, n=5000)[,1])
+C<-corrected_reads_peaks(object =all,assay = "cre",peaks = topmidbot,group_name = "CT")
+
+H2<-Heatmap(C$mouse,cluster_rows = F,cluster_columns = F,show_row_names = F,row_split = c(rep("TOP",times= 5000),rep("MID", times=5000),rep("BOTTOM", times= 5000)))
+H<-Heatmap(C$human,cluster_rows = T,cluster_columns = F,show_row_names = F,row_split = c(rep("TOP",times= 5000),rep("MID", times=5000),rep("BOTTOM", times= 5000)))
+p<-H+H2
+
+
+
+pdf("/home/torkenczyk/H_M_chromatin_atlas/human_data/Top_conserved_sites_corr_reads_5000.pdf",width = 10,height = 12)
+p
+dev.off()
+
+
+#highlight hm avg dist based on da sites
+ 
+muse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/All_da_continous_info.rds") 
+hm_avg_dist$peak<-row.names(hm_avg_dist)
+B_dist<-merge(x=hm_avg_dist,y=muse$`B-lymphocytes`,by.x="peak",by.y="feature_hg38_universal")
+T_dist<-merge(x=hm_avg_dist,y=muse$`T-lymphocytes`,by.x="peak",by.y="feature_hg38_universal")
+Card_dist<-merge(x=hm_avg_dist,y=muse$Cardiomyocytes,by.x="peak",by.y="feature_hg38_universal")
+
+B_dist[order(B_dist$cosine,decreasing = T),]
+
+
+
+B_plot<-ggplot(B_dist,aes(x=cosine,y=scale((auc.mm9_mouse+auc.hg38_human)/2),color=category_categorization))+geom_point() +theme_classic()
+B_plot2<-ggplot(B_dist[,],aes(x=cosine,color=category_categorization))+geom_density()+theme_classic()
+
+ggsave(all_plot,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Dist_all_cosine_similarity_1.pdf",width = 10,height=10)
+ggsave(all_plot2,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Dist_all_cosine_similarity_2.pdf",width = 10,height=10)
+
+
+
+T_plot<-ggplot(T_dist,aes(x=cosine,y=scale((auc.mm9_mouse+auc.hg38_human)/2),color=category_categorization))+geom_point() 
+T_plot2<-ggplot(T_dist,aes(x=cosine,color=category_categorization))+geom_density()+theme_classic()
+
+Card_plot<-ggplot(Card_dist,aes(x=cosine,y=scale((auc.mm9_mouse+auc.hg38_human)/2),color=category_categorization))+geom_point()
+Card_plot2<-ggplot(Card_dist,aes(x=cosine,color=category_categorization))+geom_density()+theme_classic()
+
+
+all_shared<-lapply(muse, FUN = function(x){dplyr::filter(x,category_categorization=="shared")})
+merged_all_shared<-dplyr::bind_rows(all_shared, .id = "column_label")
+
+all_combined<-data.frame(peak=merged_all_shared$feature_hg38_universal,label=merged_all_shared$category_categorization)
+all_human<-lapply(muse, FUN = function(x){dplyr::filter(x,category_categorization=="human")})
+merged_all_human<-dplyr::bind_rows(all_human, .id = "column_label")
+all_combined<-rbind(all_combined,data.frame(peak=merged_all_human$feature_hg38_universal,label=merged_all_human$category_categorization))
+
+all_mouse<-lapply(muse, FUN = function(x){dplyr::filter(x,category_categorization=="mouse")})
+merged_all_mouse<-dplyr::bind_rows(all_mouse, .id = "column_label")
+all_combined<-rbind(all_combined,data.frame(peak=merged_all_mouse$feature_hg38_universal,label=merged_all_mouse$category_categorization))
+
+All_dist<-merge(y=hm_avg_dist,x=all_combined,by.x="peak",by.y="peak",all.y=T)
+
+All_dist$label[is.na(All_dist$label)]<-"other"
+
+all_plot<-ggplot(All_dist,aes(x=cosine,fill=label,color=label))+geom_density(alpha=.3)+theme_classic()
+all_plot2<-ggplot(All_dist,aes(x=cosine,fill=label))+geom_histogram(aes(y=..density..), colour="black")+geom_density(alpha=.2)+theme_classic()
+all_plot3<-ggplot(All_dist,aes(x=cosine))+geom_histogram(aes(y=..density..), colour="black")+geom_density(alpha=.2)+theme_classic()
+
+all_plot
+ggsave(all_plot,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Dist_all_cosine_similarity_1.pdf",width = 10,height=10)
+ggsave(all_plot2,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Dist_all_cosine_similarity_2.pdf",width = 10,height=10)
+ggsave(all_plot3,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Dist_all_cosine_similarity_3.pdf",width = 10,height=10)
+
+#THe conclusion I have is that it would be more visually meaningfult to show the mouse human and shared on a celltype breakdown because some are more likely close
+
+all_mouse<-lapply(muse, FUN = function(x){dplyr::filter(x,category_categorization=="mouse")})
+all_human<-lapply(muse, FUN = function(x){dplyr::filter(x,category_categorization=="human")})
+all_shared<-lapply(muse, FUN = function(x){dplyr::filter(x,category_categorization=="shared")})
+all_other<-lapply(muse, FUN = function(x){dplyr::filter(x,category_categorization=="other")})
+
+
+ct_plots<-list()
+for (i in names(all_shared)){
+mmerged<-merge(x=hm_avg_dist,y=all_mouse[[i]],by.x="peak",by.y="feature_hg38_universal")
+hmerged<-merge(x=hm_avg_dist,y=all_human[[i]],by.x="peak",by.y="feature_hg38_universal")
+smerged<-merge(x=hm_avg_dist,y=all_shared[[i]],by.x="peak",by.y="feature_hg38_universal")
+omerged<-merge(x=hm_avg_dist,y=all_other[[i]],by.x="peak",by.y="feature_hg38_universal")
+all_ct_merged<-rbind(mmerged,hmerged,smerged,omerged)
+ct_plots[[i]]<-ggplot(all_ct_merged,aes(y=cosine,x=category_categorization,fill=category_categorization))+geom_boxplot()+theme_classic()+theme(legend.position = "none")+ggtitle(paste0(i))
+}
+
+wrap_plots(ct_plots,ncol=4,nrow = 4)
+
+#what if I rename original categories
+
+dist_cosine_zscore_hm<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/Z_scored.orig.labels.txt")
+
+renamed_mouse_as_h<-data.frame(orig=row.names(dist_cosine_zscore_hm),renamed=colnames(dist_cosine_zscore_hm)[apply(as.matrix(dist_cosine_zscore_hm),1,which.max)])
+renamed_human_as_m<-data.frame(orig=colnames(dist_cosine_zscore_hm),renamed=row.names(dist_cosine_zscore_hm)[apply(as.matrix(dist_cosine_zscore_hm),2,which.max)])
+
+
+mouse_dist<-list.cbind(mouse_list_distances_orig)
+colnames(mouse_dist)<-names(mouse_list_distances_orig)
+human_dist<-list.cbind(human_list_distances_orig)
+colnames(human_dist)<-names(human_list_distances_orig)
+
+mouse_dist<-t(mouse_dist)
+human_dist<-t(human_dist)
+ 
+ 
+
+have_reads_h<-human_all_atac[["cre"]][[]][human_all_atac[["cre"]][[]]$count>0,]
+have_reads_m<-mouse_select_atac[["cre"]][[]][mouse_select_atac[["cre"]][[]]$count>0,]
+
+all_peaks<-intersect(row.names(have_reads_h),row.names(have_reads_m))
+load("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/Shared.bw.species.DA.RData")
+load("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/Human_only.bw.species.DA.RData")
+load("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/Mouse_only.bw.species.DA.RData")
+
+library(dplyr)
+sh_sites<-bind_rows(shared_DA, .id = "column_label")
+sh_sites<-sh_sites[order(sh_sites$column_label),]
+h_sites<-bind_rows(human_DA, .id = "column_label")
+h_sites<-h_sites[order(h_sites$column_label),]
+m_sites<-bind_rows(mouse_DA, .id = "column_label")
+m_sites<-bind_rows(human_DA, .id = "column_label")
+m_sites<-m_sites[order(m_sites$column_label),]
+
+#created unintegrated assay
+all<-merge(human_all_atac,mouse_select_atac)
+
+
+all_sites<-corrected_reads_peaks(all,assay = "cre",peaks = intersect(row.names(have_reads_h),row.names(have_reads_m)),group_name = 'handannot')
+#da_sites<-c(sh_sites$feature_hg38_universal,h_sites$feature_hg38_universal,m_sites$feature_hg38_universal)
+#all_sites_corr_reads<-corrected_reads_peaks(all,assay = "cre",peaks = da_sites,group_name = 'handannot')
+
+
+hm_avg_dist<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/Human_mouse_overall_distances.txt",header = T)
+
+hm<-merge(t(scale(t(all_sites$mouse))),t(scale(t(all_sites$human))),by="row.names",suffixes = c(".mouse",".human"))
+#hm<-merge(t(scale(t(all_sites_corr_reads$mouse))),t(scale(t(all_sites_corr_reads$human))),by="row.names",suffixes = c(".mouse",".human"))
+
+
+#shared
+sh_sites_corr_reads<-corrected_reads_peaks(all,assay = "cre",peaks = c(shared_DA$`B-lymphocytes`$feature_hg38_universal,shared_DA$Enterocytes$feature_hg38_universal),group_name = 'handannot')
+
+
+
+
+hm_sh<-merge(t(scale(t(sh_sites_corr_reads$mouse))),t(scale(t(sh_sites_corr_reads$human))),by="row.names",suffixes = c(".mouse",".human"))
+
+
+
+row.names(hm_sh)<-hm_sh$Row.names
+hm_sh$Row.names<-NULL
+
+library(circlize)
+col_fun = colorRamp2(c(-5,0,5), c("#08306b", "#bcbddc" ,"#67000d"))
+H<-Heatmap((na.omit(as.matrix(hm_sh[c(shared_DA$`B-lymphocytes`$feature_hg38_universal,shared_DA$Enterocytes$feature_hg38_universal),]))),cluster_columns = F,cluster_rows = F,show_row_names = F,col = col_fun)
+
+
+
+
+example=c(shared_DA$Cardiomyocytes$feature_hg38_universal,shared_DA$`Endothelial cells`$feature_hg38_universal,shared_DA$`Smooth muscle cells`$feature_hg38_universal,shared_DA$Macrophages$feature_hg38_universal,shared_DA$Hepatocytes$feature_hg38_universal,shared_DA$`Schwann cells`$feature_hg38_universal,shared_DA$Fibroblasts$feature_hg38_universal,shared_DA$`Goblet cells`$feature_hg38_universal,shared_DA$`T-lymphocytes`$feature_hg38_universal,shared_DA$Pneumocytes$feature_hg38_universal,shared_DA$Enterocytes$feature_hg38_universal,shared_DA$`B-lymphocytes`$feature_hg38_universal,shared_DA$Myofibroblasts$feature_hg38_universal)
+#selected<-hm[hm$Row.names %in% example,]
+selected<-hm[match(example,hm$Row.names),]
+
+MF<-ClosestFeature(regions = shared_DA$Myofibroblasts$feature_hg38_universal,object = human_all_atac)
+MF<-MF[MF$gene_name %in% c("ACTA2","MYH11"),]
+#,"DES","TAGLN"
+CARD<-ClosestFeature(regions = shared_DA$Cardiomyocytes$feature_hg38_universal,object = human_all_atac)
+CARD<-CARD[CARD$gene_name %in% c("MYH6","MYH7"),]
+END<-ClosestFeature(regions = shared_DA$`Endothelial cells`$feature_hg38_universal,object = human_all_atac)
+
+
+library(stringr)
+#endonames<-str_split("APPBP2 ARGLU1, ATP10D, BNIP1, BST2, BTNL9, C11orf96, C3orf58, CCDC85B, CCL14, CD4, CDC73, CDKL1, CHD4, CLEC1B, CLEC2B, CLEC4G, CLEC4M, CRBN, CRHBP, CTSL, DCLRE1C, DLC1, DLG1, DNASE1L3, DOCK1, DUSP5, EFNB2, F8, FCN2, FCN3, FILIP1, FOSB, FXYD6, GBP4, GGA2, GNG11, GPR116, HES1, HYI, IL1R1, IL33, KIF1B, KLHL28, LDB2, MCM3AP, MEF2C, MFN1, MGAT5, MPZL3, MRC1, OIT3, PIK3C2A, PPAP2B, PPWD1, RASGEF1B, RASGRP3, RELN, RIN2, SECISBP2L, STAB1, STAB2, STRN3, TCF12, TEX264, TRAPPC11, TSPAN7, USP48, ZNF286B",pattern = ", ")[[1]]
+endonames=c("ENG","EGFL7")
+#"SHANK3","CLDN5"
+END<-END[END$gene_name %in% c(endonames),]
+SM<-ClosestFeature(regions = shared_DA$`Smooth muscle cells`$feature_hg38_universal,object = human_all_atac)
+SM<-SM[SM$gene_name %in% c("CARMN","MPRIP"),]
+#"SPARC"
+
+
+MAC<-ClosestFeature(regions = shared_DA$Macrophages$feature_hg38_universal,object = human_all_atac)
+MAC<-MAC[MAC$gene_name %in% c("CD68","CD14"),]
+HEP<-ClosestFeature(regions = shared_DA$Hepatocytes$feature_hg38_universal,object = human_all_atac)
+HEP<-HEP[HEP$gene_name %in% c("ALB","CRP"),]
+SCH<-ClosestFeature(regions = shared_DA$`Schwann cells`$feature_hg38_universal,object = human_all_atac)
+SCH<-SCH[SCH$gene_name %in% c("POLR2F","APC2","GFAP"),][1:5,] #POLR2F is actually SOX10
+FIB<-ClosestFeature(regions = shared_DA$Fibroblasts$feature_hg38_universal,object = human_all_atac)
+FIB<-FIB[FIB$gene_name %in% c('NID1','DCN'),] #"NID1",DCN,LUM,PODN,"VIM"
+BC<-ClosestFeature(regions = shared_DA$`B-lymphocytes`$feature_hg38_universal,object = human_all_atac)
+BC<-BC[BC$gene_name %in% c("PAX5","IRF4"),]
+#IGHA1: "chr14-105703995-105708665 -> unique
+#IDHA2: "chr14-105583731-105588395" -> shared
+#IGHJ6: "chr14-105863196-105863260" -> ?
+# IGHA1 IGHA2 IGHJ6 
+#important THY1 is mouse specific
+
+TC<-ClosestFeature(regions = shared_DA$`T-lymphocytes`$feature_hg38_universal,object = human_all_atac)
+TC<-TC[TC$gene_name %in% c("CD3D","GZMA","IFNG"),]
+#CD3D GZMA IFNG
+GBC<-ClosestFeature(regions = shared_DA$`Goblet cells`$feature_hg38_universal,object = human_all_atac)
+GBC<-GBC[GBC$gene_name %in% c("HEPACAM2","ATP2C2"),]
+# MUC2 BEST2 HEPACAM2 "BCAS1"
+ENT<-ClosestFeature(regions = shared_DA$Enterocytes$feature_hg38_universal,object = human_all_atac)
+ENT<-ENT[ENT$gene_name %in% c("GPA33","VIL1","BTNL3"),]
+
+PN<-ClosestFeature(regions = shared_DA$Pneumocytes$feature_hg38_universal,object = human_all_atac)
+PN<-PN[PN$gene_name %in% c("SFTPB","SFTPA1"),]
+
+
+highlighted_region<-c(MF$query_region,CARD$query_region,END$query_region,SM$query_region,MAC$query_region,HEP$query_region,SCH$query_region,FIB$query_region,BC$query_region,TC$query_region,GBC$query_region,PN$query_region,ENT$query_region)
+highlighted_gene<-c(MF$gene_name,CARD$gene_name,END$gene_name,SM$gene_name,MAC$gene_name,HEP$gene_name,SCH$gene_name,FIB$gene_name,BC$gene_name,TC$gene_name,GBC$gene_name,PN$gene_name,ENT$gene_name)
+
+selected<-hm[match(example,hm$Row.names),]
+row.names(selected)<-c(1:dim(selected)[1])
+
+
+#continue here
+pos_matched<-which(selected$Row.names %in% highlighted_region)
+rows_matched<-selected$Row.names[pos_matched]
+genes_matched<-highlighted_gene[match(rows_matched,highlighted_region)]
+
+
+
+
+ha = rowAnnotation(foo = anno_mark(at = pos_matched, labels = genes_matched),gp=gpar(fontsize = 1))
+
+selected$Row.names<-NULL
+
+Ordered_shared_matrix<-na.omit(as.matrix(selected[,c(15,2,16,3,25,12,21,8,20,7,24,11,18,5,19,6,26,13,23,10,17,4,14,1,22,9)]))
+
+H<-Heatmap(Ordered_shared_matrix,cluster_columns = F,cluster_rows = F,show_row_names = F,col = col_fun,right_annotation = ha)
+
+pdf(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Ordered_shared_matrix_highlight.pdf",width = 8,height = 14)
+H
+dev.off()
+
+#highlight defining sites
+
+#this is where I show IR4 as a good example of uniqe mouse and human sotes
+
+
+
+mouse_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Mouse_sites_10k.rds")
+human_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Human_sites_10k.rds")
+shared_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Shared_sites_10k.rds")
+
+#IRF4 also has a mouse example
+BCm<-ClosestFeature(regions =  mouse_10_DA$`B-lymphocytes`,object = human_all_atac)
+BCm<-BCm[BCm$gene_name %in% c("IRF4"),]
+BCh<-ClosestFeature(regions =  human_10_DA$`B-lymphocytes`,object = human_all_atac)
+BCh<-BCh[BCh$gene_name %in% c("IRF4"),]
+BCs<-ClosestFeature(regions =  shared_10_DA$`B-lymphocytes`,object = human_all_atac)
+BCs<-BCs[BCs$gene_name %in% c("IRF4"),]
+
+IR4m<-StringToGRanges(BCm$query_region)
+values(IR4m) <- DataFrame(color = rep("red",times=3))
+IR4h<-StringToGRanges(BCh$query_region)
+values(IR4h) <- DataFrame(color = rep("blue",times=1))
+IR4s<-StringToGRanges(BCs$query_region)
+values(IR4s) <- DataFrame(color = rep("green",times=length(BCs$query_region)))
+
+
+IR4<-c(IR4m,IR4h,IR4s)
+
+p1<-CoveragePlot(human_all_atac,region="IRF4",region.highlight = IR4,annotation = FALSE,peaks = FALSE,extend.downstream = 50000,extend.upstream = 1000)
+#IRF4 also has a mouse example
+p2<-CoveragePlot(mouse_select_atac,region="IRF4",region.highlight =IR4,extend.downstream = 50000,extend.upstream = 1000)
+
+wrap_plots(list(p1,p2),nrow = 2)
+
+
+
+
+#This is where I should subset mouse to Unknown and show examples
+
+m_unkown<-subset(mouse_select_atac,subset=cell_label=="Unknown")
+
+table(mouse[[]]$cell_label,mouse[[]]$handannot)
+
+
+#Myofibroblast
+CoveragePlot(m_unkown,region = "ACTA2",assay = "cre")
+CoveragePlot(m_unkown,region = "DES",assay = "cre")
+CoveragePlot(m_unkown,region = "TAGLN",assay = "cre")
+CoveragePlot(m_unkown,region = "MYH11",assay = "cre")
+
+
+write.csv(ClosestFeature(human_all_atac,regions = shared_DA$Pneumocytes$feature_hg38_universal),file = "/home/torkenczyk/PNE_marker_genes.csv",quote = F)
+#Pneumocytes
+CoveragePlot(m_unkown,region = "IRX2",assay = "cre")
+CoveragePlot(human_all_atac,region = "ABCA4",assay = "cre")|CoveragePlot(mouse_select_atac,region = "ABCA4",assay = "cre")
+CoveragePlot(mouse_select_atac,region = "MUC1",assay = "cre")
+
+
+
+
+
+DotPlot(m_unkown,assay = "RNA",features = c("ACTA2","DES","TAGLN","MYH11","NKX2-1","IRX2"))
+
+
+#Maybe do deviation 
+
+
+table(m_unkown$handannot)
+
+Myofibroblasts_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Myofibroblasts$feature_hg38_universal)
+Blymphocytes_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`B-lymphocytes`$feature_hg38_universal)
+Tlymphocytes_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`T-lymphocytes`$feature_hg38_universal)
+Enterocytes_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Enterocytes$feature_hg38_universal)
+Goblet_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`Goblet cells`$feature_hg38_universal)
+Fibroblasts_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Fibroblasts$feature_hg38_universal)
+Pneumocytes_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Pneumocytes$feature_hg38_universal)
+Sch_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`Schwann cells`$feature_hg38_universal)
+Mac_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Macrophages$feature_hg38_universal)
+SM_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`Smooth muscle cells`$feature_hg38_universal)
+End_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`Endothelial cells`$feature_hg38_universal)
+Hep_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Hepatocytes$feature_hg38_universal)
+
+DimPlot(m_unkown,label = T)
+
+row.names(Myofibroblasts_ex)<-"Myofibroblasts"
+row.names(Blymphocytes_ex)<-"B-lymphocytes"
+row.names(Tlymphocytes_ex)<-"T-lymphocytes"
+row.names(Enterocytes_ex)<-"Enterocytes"
+row.names(Goblet_ex)<-"Goblet cells"
+row.names(Fibroblasts_ex)<-"Fibroblasts"
+row.names(Pneumocytes_ex)<-"Pneumocytes"
+row.names(Sch_ex)<-"Schwann cells"
+row.names(SM_ex)<-"Smooth muscle cells"
+row.names(Pneumocytes_ex)<-"Pneumocytes"
+row.names(Mac_ex)<-"Macrophages"
+row.names(End_ex)<-"Endothelial cells"
+row.names(Hep_ex)<-"Hepatocytes"
+
+all_dev<-rbind(End_ex,SM_ex,Mac_ex,Sch_ex,Fibroblasts_ex,Goblet_ex,Pneumocytes_ex,Blymphocytes_ex,Myofibroblasts_ex)
+
+m_unkown[["ktop_st"]]<-CreateAssayObject(data = all_dev)
+bottom<-DotPlot(m_unkown,assay = "ktop_st",features = row.names(all_dev),group.by = "handannot",idents = row.names(all_dev))+xlab(label = "")+ylab(label = "")
+
+all_CT_count<-as.data.frame(as.matrix(table(m_unkown$handannot)))
+CT_subset<-data.frame(names=row.names(all_dev),counts=all_CT_count[row.names(all_dev),])
+row.names(CT_subset)<-factor(CT_subset$names,levels = row.names(CT_subset))
+
+CT_subset$names<-factor(CT_subset$names,levels = row.names(CT_subset))
+
+
+Top<-ggplot(CT_subset,aes(x=names,y=counts)) + geom_bar(stat="identity")+theme_classic()+xlab(label = "")
+
+all_output<-wrap_plots(Top,bottom,ncol = 1,nrow = 2)
+#saved as pdf
+
+#Plot ACTA2 for myofibro
+
+MF<-ClosestFeature(regions = shared_DA$Myofibroblasts$feature_hg38_universal,object = human_all_atac)
+MF<-MF[MF$gene_name %in% c("ACTA2"),]
+
+pmy<-CoveragePlot(human_all_atac,region = "ACTA2",region.highlight = MF$query_region,annotation = F,peaks = F)
+pmy2<-CoveragePlot(m_unkown,region = "ACTA2",region.highlight = StringToGRanges(MF$query_region))
+
+
+wrap_plots(list(pmy,pmy2),nrow = 2)
+
+
+
+
+
+row.names(hm)<-hm$Row.names
+hm$Row.names<-NULL
+
+H<-Heatmap((na.omit(hm[,])),cluster_columns = F,cluster_rows = F,show_row_names = F,col = col_fun)
+
+
+row.names(hm_avg_dist)<-hm_avg_dist$peak
+hm_avg_dist$peak<-NULL
+
+hm_sub<-merge(na.omit(hm_avg_dist),hm,by="row.names")
+row.names(hm_sub)<-hm_sub$Row.names
+hm_sub$Row.names<-NULL
+hm_sub$eucl<-NULL
+hm_sub$man<-NULL
+hm_sub$jac<-NULL
+hm_sub$Row.names.y<-NULL
+
+hm_sub<-hm_sub[order(hm_sub$cosine,decreasing = T),]
+hm_sub$cosine<-NULL
+
+
+library(circlize)
+col_fun = colorRamp2(c(-5,0,5), c("#08306b", "#bcbddc" ,"#67000d"))
+H<-Heatmap(t(na.omit(hm_sub[,sort(colnames(hm_sub))])),cluster_columns = F,cluster_rows = F,show_column_names = F,col = col_fun)
+
+
+
+H<-Heatmap(hm_sub[1:10000,sort(names(hm_sub))],cluster_columns = F,cluster_rows = T,show_row_names = F,row_km = 13)
+H2<-Heatmap(hm_sub[10000:20000,sort(names(hm_sub))],cluster_columns = F,cluster_rows = T,show_row_names = F,row_km = 13)
+H3<-Heatmap(hm_sub[20000:30000,sort(names(hm_sub))],cluster_columns = F,cluster_rows = T,show_row_names = F,row_km = 13)
+H4<-Heatmap(hm_sub[150000:160000,sort(names(hm_sub))],cluster_columns = F,cluster_rows = T,show_row_names = F,row_km = 13)
+
+H5<-Heatmap(hm_sub[250000:260000,sort(names(hm_sub))],cluster_columns = F,cluster_rows = T,show_row_names = F,row_km = 13)
+
+
+mouse_spec<-t(scale(t(all_sites$mouse)))
+human_spec<-t(scale(t(all_sites$human)))
+
+spec<-as.matrix(human_spec)-as.matrix(mouse_spec)
+avg<-(as.matrix(human_spec)+as.matrix(mouse_spec))/2
+look=spec*avg
+
+ordered<-c()
+for (i in 1:13)
+{
+print(colnames(avg)[i])
+ordered<-c(ordered,order(avg[,i],decreasing = T)[1:1000])
+}
+
+
+H<-Heatmap(na.omit(hm_sub[ordered,sort(colnames(hm_sub))]),cluster_columns = F,cluster_rows = F,show_row_names = F)
+
+
+# see if muse works better
+muse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/All_da_continous_info.rds") 
+top_num_peaks=10000
+list10k_sh<-list()
+list10k_mouse<-list()
+list10k_human<-list()
+for (ct in names(muse)){
+mu<-muse[[ct]]
+mu<-mu[mu$padj.mm9_mouse<0.05 | mu$padj_hg38matched_mouse<0.05 | mu$padj.hg38_human<0.05,]
+mu<-mu[with(mu, order(rankavg_categorization)),]
+mu$category10k<-c(rep("shared",times=top_num_peaks),rep("other",times=length(mu$padj.mm9_mouse)-top_num_peaks))
+mu<-mu[with(mu, order(rank.human_categorization)),]
+mu$category10k[head(which(mu$category10k != "shared" & mu$logFC.hg38_human > 0 & mu$padj_hg38matched_mouse > 0.00000001),n=top_num_peaks)]<-rep("human",times=top_num_peaks)
+mu<-mu[with(mu, order(rank.mouse_categorization)),]
+mu$category10k[head(which(mu$category10k != "shared" & mu$logFC_hg38matched_mouse > 0 & mu$category10k != "human" & mu$padj.hg38_human > 0.00000001),n=top_num_peaks)]<-rep("mouse",times=top_num_peaks)
+table(mu$category10k)  
+
+list10k_sh[[ct]]<-mu$feature_hg38_universal[mu$category10k=="shared"]
+list10k_mouse[[ct]]<-mu$feature_hg38_universal[mu$category10k=="mouse"]
+list10k_human[[ct]]<-mu$feature_hg38_universal[mu$category10k=="human"]
+
+#ggplot(mu,aes(x=logFC_hg38matched_mouse,y=logFC.hg38_human,color=category10k))+geom_point()+theme_classic()+ggtitle(i)+ylab("Human logFC")+xlab("Mouse hg38 calculated logFC")
+
+}
+
+saveRDS(list10k_sh,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Shared_sites_10k.rds")
+saveRDS(list10k_mouse,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Mouse_sites_10k.rds")
+saveRDS(list10k_human,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Human_sites_10k.rds")
+
+
+
+
+Hexample<-muse$Hepatocytes
+Hexample<-Hexample[order(Hexample$rankavg_categorization),]
+Htop10k<-Hexample$feature_hg38_universal[1:10000]
+
+mu$feature_hg38_universal
+library(circlize)
+col_fun = colorRamp2(c(-5,0,5), c("#08306b", "#bcbddc" ,"#67000d"))
+H<-Heatmap(t(na.omit(hm_sub[unlist(list10k_sh),sort(colnames(hm_sub))])),cluster_columns = F,cluster_rows = F,show_column_names = F,col = col_fun)
+H2<-Heatmap(t(na.omit(hm_sub[unlist(list10k_mouse),sort(colnames(hm_sub))])),cluster_columns = F,cluster_rows = F,show_column_names = F,col = col_fun)
+H3<-Heatmap(t(na.omit(hm_sub[unlist(list10k_human),sort(colnames(hm_sub))])),cluster_columns = F,cluster_rows = F,show_column_names = F,col = col_fun)
+
+pdf(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/HM_zscored_10000sit_DA_SH.pdf")
+H
+dev.off()
+
+pdf(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/HM_zscored_10000sit_DA_M.pdf")
+H2
+dev.off()
+
+pdf(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/HM_zscored_10000sit_DA_H.pdf")
+H3
+dev.off()
+
+
+H_top<-Heatmap(t(na.omit(hm_sub[1:1000,sort(colnames(hm_sub))])),cluster_columns = T,cluster_rows = F,show_column_names = F,col = col_fun)
+H_mid<-Heatmap(t(na.omit(hm_sub[262000:263000,sort(colnames(hm_sub))])),cluster_columns = T,cluster_rows = F,show_column_names = F,col = col_fun)
+H_bot<-Heatmap(t(na.omit(hm_sub[524000:525000,sort(colnames(hm_sub))])),cluster_columns = T,cluster_rows = F,show_column_names = F,col = col_fun)
+HALL<-H_bot+H_mid+H_top
+
+pdf(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Ordered_dist_bot_mid_top_zscored_1000sit.pdf")
+HALL
+dev.off()
+
+
+#are highly correlating ones thrown out?
+
+hm_avg_dist<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/Human_mouse_overall_distances.txt",header = T)
+
+
+
+
+
+
 
 ```

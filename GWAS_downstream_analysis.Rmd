@@ -1,0 +1,416 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+GWAS LDSC script
+
+```{r}
+#' This script will do corrplot for all combined results of LDSC analysis.
+#' 
+#' Date: 2021 Nov 17
+#' Update date 2022 Jan 28: Uppdate the scripts to the new 10k-site results from Kristof.
+
+library(shape)
+library(corrplot)
+library(gplots)
+#source("~/Desktop/Lab_work/GSMR_PhyAct_Mar2018/Old_script_and_results_before_Mar20/Plotting/corrplot.R")
+#source("~/Desktop/Lab_work/GSMR_PhyAct_Mar2018/Old_script_and_results_before_Mar20/Plotting/gsmr_plot.r")
+
+##
+setwd("/home/torkenczyk/H_M_chromatin_atlas/human_data/GWAS_longda/")
+
+# the name list is in the correct order; pls do not alter
+cell_type = c("B-lymphocytes", "Cardiomyocytes", "Endothelial_cells", "Enterocytes", 
+              "Fibroblasts", "Goblet_cells", "Hepatocytes", "Macrophages", "Myofibroblasts", 
+              "Pneumocytes", "Schwann_cells", "Smooth_muscle_cells", "T-lymphocytes")
+
+subset_list = c("shared", "human", "mouse")
+
+# get the list for all the trait names
+trait_name = list.files(path = "combined_final_latest/human_DA/", pattern = ".res")
+trait_name = gsub(pattern = "combined_", replacement = "", x = trait_name)
+trait_name = gsub(pattern = "_human_DA.res", replacement = "", x = trait_name)
+
+# separate the GWASs in UKB from other GWASs in public domain
+idx_ukb = grep(pattern = "_UKB", x = trait_name)
+ukb_traits = trait_name[idx_ukb]
+other_traits = trait_name[-idx_ukb]
+
+header = c("Category", "Prop._SNPs", "Prop._h2", "Prop._h2_std_error", "Enrichment", "Enrichment_std_error", "Enrichment_p")
+
+########################################################
+########################################################
+# 1. plot everything together. 
+{
+    traits = c("Height_2018", "BMI_2018",
+               "BCX2_BAS", "BCX2_EOS", "BCX2_LYM", "BCX2_MON", "BCX2_NEU", "BCX2_PLT", "BCX2_RBC", 
+               "Breast_Cancer", "Ovarian_cancer", "Prostate_cancer", 
+               "Allergic_disease_2017", "Asthma_2020", "RA_2014", "Vitiligo_2016", "Multi_sclerosis_2019", 
+               "SLE_2021", "AF_2018", "CTS_2019", "PBC_2015", "PSC_2017", 
+               "Stroke_2018", "CAD_2017", "AD_2019", "T2D_2018", "FG", "FI", "eGFR_2021",
+               "HC_UKB", "WC_UKB", "HGSL_UKB", "HGSR_UKB", "hBMD_UKB", "BW_UKB", 
+               "AFLB_UKB", "AMena_UKB", "AMeno_UKB", 
+               "PEF_UKB", "FEV1_UKB", "FVC_UKB", 
+               "DBP_UKB", "SBP_UKB", "PR_UKB", 
+               # "MTCIM_UKB", "NTS_UKB", "FIS_UKB", # should probably remove the neuro-related traits.
+               "Alanine_aminotransferase_UKB", "Aspartate_aminotransferase_UKB", 
+               "Albumin_UKB", "Alkaline_phosphatase_UKB", "Apoliprotein_A_UKB", "Apoliprotein_B_UKB",
+               "C-reactive_protein_UKB", "Total_protein_UKB",
+               "Calcium_UKB", "Creatinine_UKB", 
+               "Cholesterol_UKB", "HDL_cholesterol_UKB", "LDL_direct_UKB", "Triglycerides_UKB", "Vitamin_D_UKB", 
+               "Glucose_UKB", "Glycated_haemoglobin_UKB",
+               "Cystatin_C_UKB", "Gamma_glutamyltransferase_UKB", "Direct_bilirubin_UKB", "Total_bilirubin_UKB", "Urate_UKB", "Urea_UKB", 
+               "IGF-1_UKB", "Phosphate_UKB", "SHBG_UKB", "Oestradiol_UKB", "Testosterone_UKB", 
+               "Varicose_Veins_UKB", # all traits after this are added on Nov 22
+               "2hrGlu_2010", "ALmass_2020", "BCC_2021", "BMR_UKB", "Breast_cancer_2020", 
+               "CCT_2018", "celiac_disease_2010", "CKD_2019", "covid19_A2", "covid19_B1", 
+               "covid19_B2", "covid19_C2", "Gout_2019", "HOMAB_2012", "HOMAIR_2012", "cd_2017", 
+               "ibd_2017", "uc_2017", "FEV1_to_FVC_2019", "Osteoarthritis_2019", # "Proinsulin_2011", # removed due to small sample size.
+               "RNFL_thickness_2021", "GCIPL_thickness_2021", "T1D_2021")
+    
+    traits_all_name = c("height (30124842)", "BMI (30124842)", 
+                        "basophil count (32888494)", "eosinophil count (32888494)", "lymphocyte count (32888494)", 
+                        "monocyte count (32888494)", "neutrophil count (32888494)", "platelet count (32888494)", 
+                        "red blood cell count (32888494)", 
+                        "breast cancer (29059683)",  "ovarian cancer (28346442)", "prostate cancer (29892016)",
+                        "allergic disease (29083406)", "asthma (32296059)", "reumatoid arthritis (24390342)",
+                        "vitiligo (27723757)", "multiple sclerosis (31604244)", 
+                        "systemic lupus erythematosus (33536424)", "atrial fibrillation (30061737)", 
+                        "carpal tunnel syndrome (30833571)", "primary biliary cirrhosis (26394269)", 
+                        "primary sclerosing cholangitis (27992413)", "stroke (29531354)", 
+                        "coronary artery disease (29212778)", "Alzheimer's disease (30617256)", 
+                        "type 2 diabetes (30054458)", "fasting glucose (33402679)", "fasting insulin (33402679)", 
+                        "glomerular filtration rate (34272381)",
+                        "hip circum (UKB)", "waist circum (UKB)", "hand grip strength left (UKB)", "hand grip strength right (UKB)", 
+                        "heel Bone mineral density (UKB)", "birth weight (UKB)", 
+                        "age first live birth (UKB)", "age menarche (UKB)", "age menopause (UKB)", 
+                        "peak expiratory flow (UKB)", "forced expiratory volume (UKB)", "force vital capacity (UKB)", 
+                        "diastolic blood pressure (UKB)", "systolic blood pressure (UKB)", "pulse rate (UKB)", 
+                        # "mean time identify matches (UKB)", "neurocitism score (UKB)", "fluid intelligence score (UKB)", 
+                        "Alanine_aminotransferase (UKB)", "Aspartate_aminotransferase (UKB)", 
+                        "Albumin (UKB)", "Alkaline_phosphatase (UKB)", "Apoliprotein_A (UKB)", "Apoliprotein_B (UKB)",
+                        "C-reactive_protein (UKB)", "Total_protein (UKB)",
+                        "Calcium (UKB)", "Creatinine (UKB)", 
+                        "Cholesterol (UKB)", "HDL_cholesterol (UKB)", "LDL_direct (UKB)", "Triglycerides (UKB)", "Vitamin_D (UKB)", 
+                        "Glucose (UKB)", "Glycated_haemoglobin (UKB)",
+                        "Cystatin_C (UKB)", "Gamma_glutamyltransferase (UKB)", "Direct_bilirubin (UKB)", "Total_bilirubin (UKB)", "Urate (UKB)", "Urea (UKB)", 
+                        "IGF-1 (UKB)", "Phosphate (UKB)", "sex hormone binding globulin (UKB)", "Oestradiol (UKB)", "Testosterone (UKB)", 
+                        "varicose veins (UKB)", # all traits after this are added on Nov 22
+                        "2 hour glucose (20081857)", "appendicular lean mass (33097823)", "basal cell carcinoma (33549134)",
+                        "basal metabolism rate (UKB)", "breast cancer (32424353) 2020", "central corneal thickness (29760442)", 
+                        "celiac disease (20190752)", "chronic kidney disease (31152163)", "covid19 very severe vs population(freeze 6)", 
+                        "covid19 hospital vs non-hospital (freeze 6)", "covid19 hospital vs population (freeze 6)", 
+                        "covid19 covid vs population (freeze 6)", "gout (31578528)", "HOMA-B (22581228)", "HOMA-IR (22581228)", 
+                        "Crohn's disease (28067908)", "inflammatory bowel disease (28067908)", "ulcerative colitis (28067908)", 
+                        "FEV1/FVC (30804560)", "osteoarthritis (30664745)", #"fasting pro-insulin (21873549)", 
+                        "retinal nerve fibre layer thickness (33979322)", "ganglion cell inner plexiform layer thickness (33979322)",
+                        "type 1 diabetes (34012112)")
+    
+    Bxy = matrix(data = NA, ncol = length(cell_type)*length(subset_list), nrow = length(traits))
+    se = matrix(data = NA, ncol = length(cell_type)*length(subset_list), nrow = length(traits))
+    p = matrix(data = NA, ncol = length(cell_type)*length(subset_list), nrow = length(traits))
+    
+    # to load all the LDSC results 
+    i = 1
+    for (TRAIT in traits){
+        # empty vectors to store the data
+        tmp_Bxy = vector()
+        tmp_se = vector()
+        tmp_p = vector()
+        
+        for (subset in subset_list){
+            file_path = paste0("combined_final_latest/", subset, "_DA/combined_", TRAIT, "_", subset, "_DA.res")
+            tmp = read.table(file = file_path, stringsAsFactors = F)
+            names(tmp) = header
+            
+            tmp_Bxy = c(tmp_Bxy, tmp$Enrichment)
+            tmp_se = c(tmp_se, tmp$Enrichment_std_error)
+            tmp_p = c(tmp_p, tmp$Enrichment_p)
+        }
+        # merge
+        Bxy[i, ] = tmp_Bxy
+        se[i, ] = tmp_se
+        p[i, ] = tmp_p
+        
+        i = i + 1
+    }
+    
+    # the matrices of the enrichment values (Bxy), standard error of enrichment values (se), and the p-value of the enrichment test (p).
+    Bxy = as.matrix(Bxy)
+    se =  as.matrix(se)
+    p =  as.matrix(p)
+    
+    colnames(Bxy) = colnames(se) = colnames(p) = c(paste0(cell_type, "_", subset_list[1]), 
+                                                   paste0(cell_type, "_", subset_list[2]),
+                                                   paste0(cell_type, "_", subset_list[3]))
+    row.names(Bxy) = row.names(se) = row.names(p) = traits_all_name
+    
+    Bxy[which(Bxy < 0)] = 0  # some LDSC enrichemnt value may be negative, constrain them to be 0. 
+    
+    #############################
+    # flip the order of the columns (cell-type) for better visual comparison 
+    idx_col_order = order(colnames(Bxy))
+    Bxy = Bxy[, idx_col_order]
+    se = se[, idx_col_order]
+    p = p[, idx_col_order]
+    
+    z_score = sqrt(qchisq(p, df=1, lower.tail = F))  # get the z-score matrix
+    
+    ###  calculate FDR q-values
+    library(qvalue)
+    q_values = qvalue(p)
+    q = q_values$qvalues
+    
+    # label for Bonferroni Correction of p-value
+    labs <- matrix("",nrow = nrow(p), ncol = ncol(p))
+    labs[which(p <= 0.05/length(p))] <- "*"
+    
+    # label for FDR q-value = 0.01;   Using 0.001 is too stringent; 
+    labs2 <- matrix("",nrow = nrow(q), ncol = ncol(q))
+    labs2[which(q <= 0.01)] <- "*"
+    
+    # color pallete "yellow to red"
+    col3 = hcl.colors(10, "YlOrRd", rev = T) 
+    
+    # use heatmap.2() to generate heatmap (with clustering)
+    
+    # 1. Bxy is the enrichment value;  Bonferroni version
+    pdf(file="1_heatmap2_Bxy_all_GWAS_pval_2022Jan28.pdf", height=16, width = 15)
+    heatmap.2(Bxy, Rowv = T, Colv  = F, 
+              dendrogram = "row", margins = c(10, 17), 
+              cellnote = labs, notecol = "black", notecex = 0.8, 
+              col = col3, trace="none", main = "LDSC heatmap, '*' = sig p-val after Bonferroni correnction")
+    dev.off()
+    
+    # 2. Bxy; FDR 0.01 version
+    pdf(file="2_heatmap2_Bxy_all_GWAS_FDRqval0.01_2022Jan28.pdf", height=16, width = 15)
+    heatmap.2(Bxy, Rowv = T, Colv  = F, 
+              dendrogram = "row", margins = c(10, 17), 
+              cellnote = labs2, notecol = "black", notecex = 0.9, 
+              col = col3, trace="none", main = "LDSC heatmap, '*' = FDR q-value < 0.01")
+    dev.off()
+    
+    # 3. We notice that some Bxy are very large (but also come with large standError);
+    #     possibly due to the number of SNPs in LDSC is small and the estimate is not accurate.
+    #  Zscore; 
+    pdf(file="3_heatmap2_Zscore_all_GWAS_2022Jan28.pdf", height=16, width = 15)
+    heatmap.2(z_score, Rowv = T, Colv  = F, 
+              dendrogram = "row", margins = c(10, 17), 
+              notecol = "black", notecex = 0.9, 
+              col = col3, trace="none", main = "LDSC heatmap, Zscore")
+    dev.off()
+    
+    # 4. -log10(p-value)
+    pdf(file="4_heatmap2_logP_all_GWAS_2022Jan28.pdf", height=16, width = 15)
+    heatmap.2(-log10(p), Rowv = T, Colv  = F, 
+              dendrogram = "row", margins = c(10, 17), 
+              notecol = "black", notecex = 0.9, 
+              col = col3, trace="none", main = "LDSC heatmap, -log10(p-value)")
+    dev.off()
+    
+    # 4.2. -log10(p-value)
+    pdf(file="4_heatmap2_logP_all_GWAS_2022Jan28_v2.pdf", height=16, width = 15)
+    heatmap.2(-log10(p), Rowv = T, Colv  = F, 
+              dendrogram = "row", margins = c(10, 17), 
+              cellnote = labs, notecol = "black", notecex = 0.9, 
+              col = col3, trace="none", main = "LDSC heatmap, -log10(p-value), '*' = sig p-val after Bonferroni correnction")
+    dev.off()
+    
+    
+    # 5. -log10(FDR q-value)
+    pdf(file="5_heatmap2_logQvalue_all_GWAS_2022Jan28.pdf", height=16, width = 15)
+    heatmap.2(-log10(q), Rowv = T, Colv  = F, 
+              dendrogram = "row", margins = c(10, 17), 
+              notecol = "black", notecex = 0.9, 
+              col = col3, trace="none", main = "LDSC heatmap, -log10(FDR q-value)")
+    dev.off()
+    
+    # 5.2. -log10(FDR q-value) with labels
+    pdf(file="5_heatmap2_logQvalue_all_GWAS_2022Jan28_v2.pdf", height=16, width = 15)
+    heatmap.2(-log10(q), Rowv = T, Colv  = F, 
+              dendrogram = "row", margins = c(10, 17), 
+              cellnote = labs2, notecol = "black", notecex = 0.9, 
+              col = col3, trace="none", main = "LDSC heatmap, -log10(FDR q-value), '*' = FDR q-value < 0.01")
+    dev.off()
+    
+    
+    # label for FDR q-value = 0.05; 
+    labs3 <- matrix("",nrow = nrow(q), ncol = ncol(q))
+    labs3[which(q <= 0.05)] <- "*"
+    
+    # 6. -log10(FDR q-value) with labels of FDR 0.05; looks noisy
+    pdf(file="6_heatmap2_logQvalue_FDR0.05_all_GWAS_2022Jan28.pdf", height=16, width = 15)
+    heatmap.2(-log10(q), Rowv = T, Colv  = F, 
+              dendrogram = "row", margins = c(10, 17), 
+              cellnote = labs3, notecol = "black", notecex = 0.9, 
+              col = col3, trace="none", main = "LDSC heatmap, -log10(FDR q-value), '*' = FDR q-value < 0.05")
+    dev.off()
+    
+}
+
+z_score
+Bxy
+Q=-log10(q)
+
+sh<-data.frame(val=colMeans(Q[,colnames(Bxy)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)]]))
+mus<-data.frame(val=colMeans(Q[,colnames(Bxy)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)-1]]))
+hum<-data.frame(val=colMeans(Q[,colnames(Bxy)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)-2]]))
+sh$type<-"shared"
+hum$type<-"human"
+mus$type<-"mouse"
+
+res<-rbind(sh,hum,mus)
+
+ggplot(res,aes(x=type,y=val,fill=type))+geom_boxplot()+theme_classic()
+
+
+library(ggpubr)
+
+# Visualize: Specify the comparisons you want
+my_comparisons <- list( c("mouse", "shared"), c("mouse", "human"),c("shared","human"))
+p2<-ggboxplot(res, x = "type", y = "val", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 2)+ylab("LDSC -log(q) value")
+
+
+
+```
+
+
+```{r}
+C1<-read.csv("results_hypergeometric_test/B-lymphocytes_hypergeom_test_all_2022Feb08.csv")
+C2<-read.csv("results_hypergeometric_test/T-lymphocytes_hypergeom_test_all_2022Feb08.csv")
+C3<-read.csv("results_hypergeometric_test/Endothelial cells_hypergeom_test_all_2022Feb08.csv")
+C4<-read.csv("results_hypergeometric_test/Cardiomyocytes_hypergeom_test_all_2022Feb08.csv")
+C5<-read.csv("results_hypergeometric_test/Enterocytes_hypergeom_test_all_2022Feb08.csv")
+C6<-read.csv("results_hypergeometric_test/Fibroblasts_hypergeom_test_all_2022Feb08.csv")
+C7<-read.csv("results_hypergeometric_test/Goblet cells_hypergeom_test_all_2022Feb08.csv")
+C8<-read.csv("results_hypergeometric_test/Hepatocytes_hypergeom_test_all_2022Feb08.csv")
+C9<-read.csv("results_hypergeometric_test/Macrophages_hypergeom_test_all_2022Feb08.csv")
+C10<-read.csv("results_hypergeometric_test/Myofibroblasts_hypergeom_test_all_2022Feb08.csv")
+C11<-read.csv("results_hypergeometric_test/Pneumocytes_hypergeom_test_all_2022Feb08.csv")
+C12<-read.csv("results_hypergeometric_test/Schwann cells_hypergeom_test_all_2022Feb08.csv")
+C13<-read.csv("results_hypergeometric_test/Smooth muscle cells_hypergeom_test_all_2022Feb08.csv")
+
+
+
+
+
+
+
+
+
+
+a<-rbind(C1,C2,C3,C4,C5,C6,C7,C8,C9,C10,C11,C12,C13)
+a<-a[a$group!="merged",]
+b<-data.frame(cat=paste(a$celltype,a$group),pt=a$pt,BH=a$BH)
+b
+library(reshape2)
+c<-acast(b,formula = cat~pt,value.var = "BH")
+all<-as.data.frame(t(c))
+
+all<-all[,order(names(all))]
+
+all_select=all[rowSums(all<0.05)>0,]
+
+length(rowSums(all_select<0.001)>0)
+
+
+library(circlize)
+col_fun = colorRamp2(c(0,0.001,1), c("#67000d","#bcbddc","#08306b"))
+Heatmap(all_select,show_row_names = F,cluster_columns = T,col = col_fun)
+
+col_fun2 = colorRamp2(c(-4,0,4), c("#67000d","#08306b","#bcbddc"))
+
+Heatmap(t(scale(t(scale(all_select)))),show_row_names = F,cluster_columns = F,col = col_fun2)
+
+row.names(all_select)[all_select$`Pneumocytes shared`<0.01]
+
+all_select2<-as.matrix(all_select)
+all_select2[which(all_select2>0.1)] <- 1
+all_select2[which(all_select2<0.001)] <- 4
+all_select2[which(all_select2<0.01)]<-3
+all_select2[which(all_select2<0.1)]<-2
+
+Heatmap(all_select2,show_row_names = F,cluster_columns = F)
+
+col_fun3 = colorRamp2(c(1,2,3,4), c("#FEF1DB","#FBCD8E","#F18659","#D73416"))
+
+Heatmap(all_select2,show_row_names = F,cluster_columns = T,col=col_fun3)
+
+#traits to highlight
+
+Hep_names<-row.names(all_select)[order(all_select$`Hepatocytes shared`,decreasing = F)[c(1,4,5,6,11)]]
+Hep_pos<-order(all_select$`Hepatocytes shared`,decreasing = F)[c(1,4,5,6,11)]
+Tc_names<-head(row.names(all_select)[order(all_select$`T-lymphocytes shared`,decreasing = F)],n=50)
+Tc_pos<-head(order(all_select$`T-lymphocytes shared`,decreasing = F),n=50)
+Mac_names<-head(row.names(all_select)[order(all_select$`Macrophages shared`,decreasing = F)],n=50)
+Mac_pos<-head(order(all_select$`Macrophages shared`,decreasing = F),n=50)
+Bc_names<-head(row.names(all_select)[order(all_select$`B-lymphocytes shared`,decreasing = F)],n=50)
+Bc_pos<-head(order(all_select$`B-lymphocytes shared`,decreasing = F),n=50)
+Immune_shared_names<-intersect(intersect(Tc_names,Mac_names),Bc_names)[c(2,8,11,18)]
+Immune_shared_pos<-intersect(intersect(Tc_pos,Mac_pos),Bc_pos)[c(2,8,11,18)]
+Car_names<-head(row.names(all_select)[order(all_select$`Cardiomyocytes shared`,decreasing = F)],n=50)[c(1,17,27)]
+Car_pos<-head(order(all_select$`Cardiomyocytes shared`,decreasing = F),n=50)[c(1,17,27)]
+Gob_pos<-head(order(all_select$`Goblet cells shared`,decreasing = F),n=50)
+Ent_pos<-head(order(all_select$`Enterocytes shared`,decreasing = F),n=50)
+intestine_names<-row.names(all_select)[intersect(Ent_pos,Gob_pos)[c(2,8,19)]]
+intestine_pos<-intersect(Ent_pos,Gob_pos)[c(2,8,19)]
+mfib_pos<-head(order(all_select$`Myofibroblasts shared`,decreasing = F),n=50)
+sm_pos<-head(order(all_select$`Smooth muscle cells shared`,decreasing = F),n=50)
+conn_pos<-intersect(mfib_pos,sm_pos)[c(10,13,5)]
+conn_names<-row.names(all_select)[conn_pos]
+sch_pos<-head(order(all_select$`Schwann cells shared`,decreasing = F),n=50)[7]
+sch_names<-row.names(all_select)[sch_pos]
+
+pn_pos<-head(order(all_select$`Pneumocytes shared`,decreasing = F),n=50)[3]
+pn_names<-row.names(all_select)[pn_pos]
+
+
+Heatmap(all_select2,show_row_names = F,cluster_columns = T,col=col_fun3)
+
+
+ha = rowAnnotation(foo = anno_mark(at = c(Hep_pos,Immune_shared_pos,Car_pos,intestine_pos,conn_pos,sch_pos,pn_pos), labels = c(Hep_names,Immune_shared_names,Car_names,intestine_names,conn_names,sch_names,pn_names)))
+
+Heatmap(all_select2,show_row_names = F,cluster_columns = T,col=col_fun3,right_annotation = ha)
+
+row.names(all_select)[(all_select$`B-lymphocytes human`<0.01)[1,4,5,6,11]]
+
+
+sh<-data.frame(val=colMeans(all_select2[,colnames(all_select2)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)]]))
+mus<-data.frame(val=colMeans(all_select2[,colnames(all_select2)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)-1]]))
+hum<-data.frame(val=colMeans(all_select2[,colnames(all_select2)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)-2]]))
+sh$type<-"shared"
+hum$type<-"human"
+mus$type<-"mouse"
+
+res<-rbind(sh,hum,mus)
+
+ggplot(res,aes(x=type,y=val,fill=type))+geom_boxplot()+theme_classic()
+
+
+library(ggpubr)
+
+# Visualize: Specify the comparisons you want
+my_comparisons <- list( c("mouse", "shared"), c("mouse", "human"),c("shared","human"))
+p2<-ggboxplot(res, x = "type", y = "val", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 2)+ylab("FDR corrected Hypergeometric test score")
+
+
+
+
+
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.

@@ -1,0 +1,534 @@
+---
+title: "GWAS_finemapping_res_analysis"
+author: "Kristof Torkenczy"
+date: "4/13/2022"
+output: html_document
+---
+
+```{r}
+  # region can be a string, name of a gene, or GRanges object
+FindRegion <- function(
+  object,
+  region,
+  sep = c("-", "-"),
+  assay = NULL,
+  extend.upstream = 0,
+  extend.downstream = 0
+) {
+  if (!is(object = region, class2 = "GRanges")) {
+    # if separators are present in the string and we can convert the
+    # start to a number, asssume we're using genomic coordinates
+    if (all(sapply(X = sep, FUN = grepl, x = region))) {
+      print("here")
+      region <- StringToGRanges(regions = region, sep = sep)
+    } else {
+      region <- LookupGeneCoords(object = object, assay = assay, gene = region)
+      if (is.null(x = region)) {
+        stop("Gene not found")
+      }
+    }
+  }
+  
+  region <- suppressWarnings(expr = Extend(
+    x = region,
+    upstream = extend.upstream,
+    downstream = extend.downstream
+  )
+  )
+  return(region)
+}
+```
+
+
+
+```{r GWAS res}
+mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Mouse_added_links.rds")
+human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Human_added_links.rds")
+
+library(motifmatchr)
+library(Signac)
+library(JASPAR2020)
+library(TFBSTools)
+library(reshape2)
+pfm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = FALSE)
+)
+
+
+
+GWAS_list<-list()
+GWAS_list_large<-list()
+GWAS<-list.files("/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/Apr13/")
+
+for (gwas in GWAS)
+{
+print(gwas)
+file_loc<-paste0("/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/Apr13/",gwas,"/")
+#<list.files(file_loc)
+
+if(length(list.files(file_loc))>0)
+{
+trait_shared<-read.table(file=paste0(file_loc,gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+
+#trait_human<-read.table(file=paste0(file_loc,"human_DA_",gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+#trait_mouse<-read.table(file=paste0(file_loc,"mouse_DA_",gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+
+if(dim(trait_shared)[1]>1)
+{
+trait_shared$coord<-paste0(paste0("chr",trait_shared$CHR),"-",trait_shared$POS+1,"-",trait_shared$POS+2)
+trait_shared$coord_peak_hg38<-apply(X = trait_shared[,22:34],MARGIN = 1,FUN=function(x){unique(sort(as.character(x)))[-1]})
+
+Human_hg38_annotation<-Annotation(human)[Annotation(human)$gene_biotype=="protein_coding"]
+
+SNP_all_trait_sh<-StringToGRanges(paste(paste0("chr",trait_shared$CHR),trait_shared$POS+1,trait_shared$POS+2,sep = "-"))
+Peaks_all_trait_sh<-StringToGRanges(trait_shared$coord_peak_hg38,sep = c("_","_"))
+#Peaks_all_trait_sh<-sort(StringToGRanges(unique(trait_shared$Hepatocytes)[-1],sep = c("_","_")))
+
+#concatinate what it is presernt in
+TorF_mat<-matrix(data = rep(trait_shared$coord_peak_hg38,times=13),ncol = 13,nrow = dim(trait_shared)[1])==trait_shared[,22:34]
+trait_shared$present_in<-apply(TorF_mat,MARGIN = 1,FUN=function(x){paste(colnames(TorF_mat)[x],collapse = ",")})
+
+
+#transfering to hg19
+hg38_hg19 <- rtracklayer::import.chain("/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/hg38ToHg19.over.chain")
+
+
+values(Peaks_all_trait_sh)<-DataFrame(gene=ClosestFeature(annotation = Human_hg38_annotation,object = human,regions = Peaks_all_trait_sh)$gene_name,distance=ClosestFeature(annotation = Human_hg38_annotation,object = human,Peaks_all_trait_sh)$distance,SNPpos=GRangesToString(SNP_all_trait_sh),present_in=trait_shared$present_in)
+
+Peaks_all_trait_sh_hg19 <- rtracklayer::liftOver(x = Peaks_all_trait_sh, chain = hg38_hg19)
+names(Peaks_all_trait_sh_hg19) <- GRangesToString(Peaks_all_trait_sh)
+
+# discard any peaks that were mapped to >1 region in hg19
+correspondence <- elementNROWS(Peaks_all_trait_sh_hg19)
+Peaks_all_trait_sh_hg19 <- Peaks_all_trait_sh_hg19[correspondence == 1]
+Peaks_all_trait_sh <- unlist(Peaks_all_trait_sh_hg19)
+
+#SNP_all_trait_mouse<-StringToGRanges(paste(paste0("chr",trait_mouse$CHR),trait_mouse$POS+1,trait_mouse$POS+2,sep = "-"))
+#SNP_all_trait_human<-StringToGRanges(paste(paste0("chr",trait_human$CHR),trait_human$POS+1,trait_human$POS+2,sep = "-"))
+
+#motif_pos <- matchMotifs(pwms = pfm,peaks=StringToGRanges(Peaks_all_trait_sh,sep = c("_","_")), genome = "hg19",out = "positions") 
+
+#SNP_all_ct_trait<-SNP_all_trait[trait_example_shared$Hepatocytes!="."]
+
+
+#now match the motifs with the snps, first the what are the motifs withing hg19 peaks
+motif_ix_sh_pos <- matchMotifs(pfm, Peaks_all_trait_sh, genome = "hg19",out = "positions") 
+motif_ix_sh <- matchMotifs(pfm, Peaks_all_trait_sh, genome = "hg19") 
+snp_motif_mat<-motifMatches(motif_ix_sh) # Extract matches matrix from result
+matched_in_peak<-colnames(snp_motif_mat)[colSums(snp_motif_mat)>1]
+#only look at motifs that have matched snp
+
+
+motif_w_overlapping_SNP<-lapply(matched_in_peak,FUN=function(x){
+  findOverlapPairs(motif_ix_sh_pos[[x]],SNP_all_trait_sh)
+  })
+
+names(motif_w_overlapping_SNP)<-matched_in_peak
+matched_m_SNP<-unlist(lapply(motif_w_overlapping_SNP,FUN=function(x)length(x)>0))
+Motif_that_matched<-matched_in_peak[matched_m_SNP]
+
+Pos_motif_that_matched_w_snp<-motif_w_overlapping_SNP[Motif_that_matched]
+
+#max(unlist(lapply(Pos_motif_that_matched_w_snp, function(x)length(unique(x@second)))))
+#NR2C2 the top MA0504.1 for hep
+
+motif_snps<-lapply(Pos_motif_that_matched_w_snp,function(x){GRangesToString(second(x))})
+peaks_snps<-lapply(Pos_motif_that_matched_w_snp,function(x){GRangesToString(x@first,sep = c(":","-"))})
+
+motif_snp_hg19p<-data.frame(SNP=unlist(motif_snps),motif_pos=unlist(peaks_snps))
+peak_gene_assoc<-data.frame(Peaks_all_trait_sh)
+peak_gene_assoc$motifpos<-paste0(peak_gene_assoc$seqnames,"-",peak_gene_assoc$start,"-",peak_gene_assoc$end)
+if(dim(motif_snp_hg19p)[2]!=0)
+{
+  
+peak_info<-data.frame(Peaks_all_trait_sh)
+motif_info<-motif_snp_hg19p
+motif_info$motif<-str_sub(row.names(motif_info),1,8)
+motif_info$motif_name<-lapply(pfm[motif_info$motif],function(x){name(x)})
+motif_snp_hg19p<-merge(x=motif_info,y=peak_info,by.x="SNP",all.x=T,by.y="SNPpos",all.y=F)
+motif_snp_hg19p$hg19_peak<-paste(motif_snp_hg19p$seqnames,motif_snp_hg19p$start,motif_snp_hg19p$end,sep = c("-","-"))
+motif_snp_hg19p$seqnames<-NULL
+motif_snp_hg19p$start<-NULL
+motif_snp_hg19p$end<-NULL
+motif_snp_hg19p$width<-NULL
+motif_snp_hg19p$strand<-NULL
+
+large_df<-merge(x=motif_snp_hg19p,y=trait_shared,by.x="SNP",by.y="coord",all.x=T,all.y=F)
+
+large_df$present_in.y<-NULL
+
+#motif_snp_hg19p$gene<-Peaks_all_trait_sh$gene[subjectHits(findOverlaps(StringToGRanges(motif_snp_hg19p$hg19_peak,sep = c(":","-")),Peaks_all_trait_sh))]
+#motif_snp_hg19p$distance<-Peaks_all_trait_sh$distance[subjectHits(findOverlaps(StringToGRanges(motif_snp_hg19p$hg19_peak,sep = c(":","-")),Peaks_all_trait_sh))]
+GWAS_list[[gwas]]<-motif_snp_hg19p
+GWAS_list_large[[gwas]]<-large_df
+
+}
+}
+
+}
+}
+
+table(GWAS_list_large$AF_2018[GWAS_list_large$AF_2018$Cardiomyocytes!=".",]$motif_name)
+
+all<-read.delim("/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/chromvar_shared.txt",header = T)
+all$celltype<-c(rep("Myofibroblasts",times=5),rep("B-lymphocytes",times=5),rep("Enterocytes",times=5),rep("Pneumocytes",times=5),rep("T-lymphocytes",times=5),rep("Goblet cells",times=2),rep("Fibroblasts",times=5),rep("Schwann cells",times=5),rep("Hepatocytes",times=5),rep("Macrophages",times=5),rep("Smooth muscle cells",times=4),rep("Endothelial cells",times=5),rep("Cardiomyocytes",times=5))
+
+
+
+saveRDS(GWAS_list,file = "/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/GWAS_SNP_overlapping_peaks_Motifs.rds")
+saveRDS(GWAS_list_large,file = "/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/GWAS_SNP_overlapping_peaks_Motifs_all_info.rds")
+
+GWAS_list<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/GWAS_SNP_overlapping_peaks_Motifs.rds")
+GWAS_list_large<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/GWAS_SNP_overlapping_peaks_Motifs_all_info.rds")
+
+sapply(GWAS_list_large,FUN = function(x){length(unique(sort(x$SNP)))})
+
+
+#next look at how chromvar top results for each cell line enrich in phenotypes that are enriched in the same cell tyoe
+
+#make counts for all motifs overlapping CREs that is our population, for all pop I am using all cell DA sites so ~130000
+sites<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Shared_sites_10k.rds")
+
+
+
+all_peaks<-StringToGRanges(unlist(sites))
+all_peaks_motif_overlap<-lapply(matchMotifs(pfm_sub, all_peaks, genome = "hg38",out = "positions"),function(y){length(y)})
+all_peaks_motif_overlap_df<-data.frame(all_motif_counts=unlist(all_peaks_motif_overlap),motif_code=names(unlist(all_peaks_motif_overlap)))
+
+#make counts for number of peaks contain motif within celltype
+
+pfm_sub<-pfm[all$x]
+
+all$motif_code<-all$x
+
+motif_list<-lapply(sites,function(x){lapply(matchMotifs(pfm_sub, StringToGRanges(x), genome = "hg38",out = "positions"),function(y){length(y)})})
+
+all_counts_motifs=data.frame(counts=unlist(motif_list),celltype=str_split_fixed(string = names(unlist(motif_list)),pattern = "\\.",n = 2)[,1],motif_code=str_split_fixed(string = names(unlist(motif_list)),pattern = "\\.",n = 2)[,2])
+#this is the data frame that shows the peak counts that have a motif from the top 20
+all_counts_motifs<-merge(all_counts_motifs,all,by="motif_code",all.x=T)
+
+
+
+#now gwas
+GWAS_all<-bind_rows(GWAS_list_large, .id = "column_label")
+
+GWAS_motifs_perturbed<-data.frame(motif= unlist(GWAS_all$motif_name),celltype=GWAS_all$present_in.x)
+
+GWAS_motifs_perturbed<-data.frame(motif= unlist(GWAS_all$motif_name),celltype=GWAS_all$present_in.x)
+
+GWAS_ct_GWAS_fineass<-data.frame(motif=unlist(GWAS_all$column_label),celltype=GWAS_all$present_in.x)
+GWAS_motifs_perturbed_simplified<-GWAS_motifs_perturbed %>% tidyr::separate_rows(celltype, sep = ",")
+GWAS_ct_GWAS_fineass_simplified<-GWAS_ct_GWAS_fineass %>% tidyr::separate_rows(celltype, sep = ",")
+GWAS_table<-as.matrix(table(GWAS_motifs_perturbed_simplified))
+GWAS_table2<-as.matrix(as.data.frame(table(GWAS_ct_GWAS_fineass_simplified)))
+
+GWAS_snp_overlap_tf<-GWAS_table[all$motif,gsub(gsub(unique(all$celltype),pattern = "-",replacement = "\\."),pattern = " ",replacement = "_")]
+
+GWAS_snp_overlap_tf<-melt(GWAS_snp_overlap_tf)
+GWAS_snp_overlap_tf$celltype<-gsub(gsub(GWAS_snp_overlap_tf$celltype,pattern = "\\.",replacement = "-"),pattern = "_",replacement = " ")
+#now combine dataframes
+GWAS_snp_overlap_tf$combined<-paste(GWAS_snp_overlap_tf$motif,GWAS_snp_overlap_tf$celltype,sep="_")
+all_counts_motifs$combined<-paste(all_counts_motifs$motif,all_counts_motifs$celltype.x,sep="_")
+
+
+
+merged_for_hypergeom<-merge(x=GWAS_snp_overlap_tf,y=all_counts_motifs,by="combined",all.x=T)
+merged_for_hypergeom<-merge(merged_for_hypergeom,all_peaks_motif_overlap_df,all.x=T,by="motif_code")
+
+vector_add=c()
+for (i in c(1:61)) {start=i
+end=i*13
+vector_add=c(vector_add,rep(sum(clean_df$motifs_overlap_snps[start:end]),times=13))}
+
+
+clean_df<-data.frame(motif=merged_for_hypergeom$motif_code,motif_names=merged_for_hypergeom$motif.x,celltype_tested=merged_for_hypergeom$celltype,celltype_enriched=merged_for_hypergeom$celltype.y,motifs_overlap_snps=merged_for_hypergeom$value,motifs_sampled=merged_for_hypergeom$counts,all_motif_counts=merged_for_hypergeom$all_motif_counts)
+
+vector_add=c()
+for (i in c(1:61)) {start=i
+end=i*13
+vector_add=c(vector_add,rep(sum(clean_df$motifs_overlap_snps[start:end]),times=13))}
+
+clean_df$all_motif_overlap_snp=vector_add
+write.table(clean_df,"/brahms/torkenczyk/H_M_storage/analysis/Fine_mapping_analysis/ALL_data_for_hypergeom.txt",quote = F,sep = "\t")
+
+
+clean_df$hypergeom_p<-phyper(clean_df$motifs_overlap_snps-1, clean_df$all_motif_overlap_snp, clean_df$all_motif_counts-clean_df$all_motif_overlap_snp, clean_df$motifs_sampled, lower.tail = FALSE, log.p = FALSE)
+
+library(qvalue)
+
+
+#of 10000 peaks
+#counts have the motif
+#value have the snp
+#counts-value don't
+
+
+
+GWAS_counts<-data.frame(Celltype=as.factor(GWAS_table2[,2]),Freq=as.numeric(GWAS_table2[,3]))
+
+ggplot(GWAS_counts,aes(x=Celltype,y=Freq))+geom_boxplot()+theme_classic()
+
+                       
+GWAS_table[c("IRF1","STAT1","STAT1::STAT2","SPI1","SPIB","RUNX3","HNF4G","HNF4A","HNF1A","HNF1B","SOX10"),]
+
+Heatmap(t(scale(t(GWAS_table[c("IRF1","STAT1","STAT1::STAT2","RUNX3","HNF4G","HNF4A","HNF1A","HNF1B","SOX10","SOX8","MYF5"),]))))
+
+Heatmap(t(scale(t(GWAS_table[all$motif,]))))
+
+ha = rowAnnotation(bar = all$celltype)
+names<-gsub(gsub(unique(all$celltype),pattern = "-",replacement = "\\."),pattern = " ",replacement = "_")[-c(4,11,12,13)]
+Heatmap(t(scale(t(GWAS_table[all$motif,gsub(gsub(unique(all$celltype),pattern = "-",replacement = "\\."),pattern = " ",replacement = "_")]))),cluster_rows = F,cluster_columns = F,left_annotation = ha)
+Heatmap(t(scale(t(GWAS_table[all$motif[c(2,3,5,7,8,9,10,14,15,21,27,28,29,30,31,33,34,35,37,38,39)],names]))),cluster_rows = F,cluster_columns = F)
+
+
+
+
+
+
+#chr15-72448452-72448453->chr15-72156111-72156112
+#chr15-72448295-72448795->chr15-72155954-72156454
+p1<-CoveragePlot(human,region = "GRAMD2",region.highlight = StringToGRanges("chr15-72155954-72156454"),extend.downstream = 500,extend.upstream=5000,links = F,links.min.cutoff=0.15)
+p2<-LinkPlot(object = human,region = FindRegion(human,region = "GRAMD2",extend.downstream = 500,extend.upstream=5000),min.cutoff=0.15)
+
+wrap_plots(p1,p2,ncol = 1,nrow = 2)
+
+CoveragePlot(human,region = StringToGRanges("chr15-72155954-72156454"),region.highlight = StringToGRanges("chr15-72156111-72156112"),extend.downstream = 50,extend.upstream=50)
+
+CoveragePlot(mouse,region = "GRAMD2",region.highlight = StringToGRanges("chr15-72155954-72156454"),extend.downstream = 500,extend.upstream=5000)
+CoveragePlot(mouse,region = StringToGRanges("chr15-72155954-72156454"),region.highlight = StringToGRanges("chr15-72156111-72156112"),extend.downstream = 50,extend.upstream=50)
+
+#chr15-72461640-72462140->chr15-72169299-72169799
+#chr15-72461649-72461650->chr15-72169308-72169309
+
+CoveragePlot(human,region = "GRAMD2",region.highlight = StringToGRanges("chr15-72169299-72169799"),extend.downstream = 5000,extend.upstream=500,links = T)
+CoveragePlot(human,region = StringToGRanges("chr15-72155954-72156454"),region.highlight = StringToGRanges("chr15-72156111-72156112"),extend.downstream = 50,extend.upstream=50)
+
+CoveragePlot(mouse,region = "GRAMD2",region.highlight = StringToGRanges("chr15-72169299-72169799"),extend.downstream = 5000,extend.upstream=5000)
+CoveragePlot(mouse,region = StringToGRanges("chr15-72155954-72156454"),region.highlight = StringToGRanges("chr15-72156111-72156112"),extend.downstream = 50,extend.upstream=50)
+
+
+Triglic_HEP<-GWAS_list_large$Triglycerides_UKB[GWAS_list_large$Triglycerides_UKB$present_in.x=="Hepatocytes",]
+
+p1<-CoveragePlot(human,region = "GPAM",region.highlight = StringToGRanges("chr10-112176493-112176993"),extend.downstream = 5000,extend.upstream=5000,links = F)
+p1b<-LinkPlot(object = human,region = FindRegion(human,region = "GPAM",extend.downstream = 5000,extend.upstream=5000),min.cutoff=0.05)
+human_combo<-wrap_plots(p1,p1b,ncol = 1,nrow = 2,heights = c(4,1))
+
+
+
+#chr10:113936435-113936448, chr10:112176677-112176690
+#chr10:113936430-113936443, chr10:112176672-112176685
+
+motifs<-StringToGRanges(c("chr10-112176677-112176690","chr10-112176672-112176685"))
+values(motifs)<-DataFrame(motif=c("HOXB13","Arid5a"))
+p1c<-CoveragePlot(human,region = StringToGRanges("chr10-112176493-112176993"), peaks = F ,ranges = motifs,ranges.group.by = "motif",region.highlight = StringToGRanges("chr10-112176683-112176684"),links = F)
+
+p2<-CoveragePlot(mouse,region = "GPAM",region.highlight = StringToGRanges("chr10-112176493-112176993"),extend.downstream = 5000,extend.upstream=5000,links = F)
+p2b<-LinkPlot(object = mouse,region = FindRegion(mouse,region = "GPAM",extend.downstream = 5000,extend.upstream=5000),min.cutoff=0.2)
+p2c<-CoveragePlot(mouse,region = StringToGRanges("chr10-112176493-112176993"), peaks = F ,ranges = motifs,ranges.group.by = "motif",region.highlight =StringToGRanges("chr10-112176683-112176684"),links = F)
+mouse_combo<-wrap_plots(p2,p2b,ncol = 1,nrow = 2,heights = c(4,1))
+
+all<-wrap_plots(list(p1,p2,p1b,p2b),ncol = 2,nrow = 2,heights = c(4,1))
+
+all_focus<-wrap_plots(list(p1c,p2c),ncol = 1,nrow = 2)
+
+
+#chr12-120224489-120224989
+#RPLP0
+
+
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+#plotting of validation res FOXA2
+a<-CoveragePlot(human,region = StringToGRanges("chr20-22581005-22585455"))
+b<-CoveragePlot(mouse,region = StringToGRanges("chr20-22581005-22585455"))
+c<-CoveragePlot(human,region= StringToGRanges("chr20-22584195-22584695"))
+d<-CoveragePlot(mouse,region= StringToGRanges("chr20-22584195-22584695"))
+
+all_cov<-wrap_plots(list(a,c,b,d),ncol = 2,nrow = 2)
+
+atot<-CoveragePlot(human,region = StringToGRanges("chr20-22581005-22585455"),region.highlight = StringToGRanges("chr20-22584195-22584695"))
+atot2<-CoveragePlot(human,region = StringToGRanges("chr20-22581005-22585455"),region.highlight = StringToGRanges("chr20-22584195-22584695"))
+atot2<-CoveragePlot(human,region = StringToGRanges("chr20-22581005-22585455"),region.highlight = StringToGRanges("chr20-22584195-22584695"))
+
+
+all_cov2<-wrap_plots(list(atot,atot2),ncol = 1,nrow = 2)
+
+
+FindRegion(human,"PCBP1")+        
+             
+             ,extend.upstream = 350000,region.highlight = StringToGRanges(c("chr9-137241213-137243707","chr9-137612098-137612598")))
+CoveragePlot(human,region = StringToGRanges("chr9-137241213-137243707"))
+
+
+#RPLP0 chr12-120224489-120224989
+distance(FindRegion(human,"RPLP0"),StringToGRanges("chr12-120224489-120224989"))
+
+
+atot<-CoveragePlot(human,region = "RPLP0",region.highlight = StringToGRanges("chr12-120224489-120224989"),extend.downstream = 30000)
+
+atot<-CoveragePlot(human,region = "RPLP0",region.highlight = StringToGRanges("chr12-120224489-120224989"),extend.downstream = 30000)
+atot2<-CoveragePlot(mouse,region = "RPLP0",region.highlight = StringToGRanges("chr12-120224489-120224989"),extend.downstream = 30000)
+
+all_cov3<-wrap_plots(list(atot,atot2),ncol = 1,nrow = 2)
+
+#MYO5C
+#chr15-52288307-52288807
+distance(FindRegion(human,"MYO5C"),StringToGRanges("chr15-52288307-52288807"))
+
+atot<-CoveragePlot(human,region = "MYO5C",region.highlight = StringToGRanges("chr15-52288307-52288807"))
+atot2<-CoveragePlot(mouse,region = "MYO5C",region.highlight = StringToGRanges("chr15-52288307-52288807"))
+all_cov4<-wrap_plots(list(atot,atot2),ncol = 1,nrow = 2)
+
+FindMarkers(human,ident.1 = "Hepatocytes",ident.2 = "Cardiomyocytes")
+
+#POT1
+
+atot1<-CoveragePlot(mouse,region = "POT1",region.highlight = StringToGRanges("chr7-124765604-124766104"),extend.upstream = 60000)
+atot2<-CoveragePlot(mouse,region = "POT1",region.highlight = StringToGRanges("chr7-124765604-124766104"),extend.upstream = 60000)
+atot3<-TilePlot(mouse,region = StringToGRanges("chr7-124765604-124766104"))
+atot4<-TilePlot(mouse,region = StringToGRanges("chr7-124765604-124766104"))
+all_cov4<-wrap_plots(list(atot1,atot3,atot2,atot4),ncol = 2,nrow = 2)
+
+#WWC1
+atot1<-CoveragePlot(mouse,region = "WWC1",region.highlight = StringToGRanges("chr5-168269197-168269697"),extend.upstream = 30000)
+atot2<-CoveragePlot(mouse,region = "WWC1",region.highlight = StringToGRanges("chr5-168269197-168269697"),extend.upstream = 30000)
+atot3<-TilePlot(mouse,region = StringToGRanges("chr7-124765604-124766104"))
+atot4<-TilePlot(mouse,region = StringToGRanges("chr7-124765604-124766104"))
+all_cov4<-wrap_plots(list(atot1,atot2),ncol = 1,nrow = 2)
+
+#POS 
+#FPGS chr9-127566473-127566973
+#227k didn't work
+
+#FPGS
+atot1<-CoveragePlot(mouse,region = "FPGS",region.highlight = StringToGRanges("chr9-127566473-127566973"),extend.upstream = 250000)
+atot2<-CoveragePlot(mouse,region = "FPGS",region.highlight = StringToGRanges("chr9-127566473-127566973"),extend.upstream = 250000)
+all_cov4<-wrap_plots(list(atot1,atot2),ncol = 1,nrow = 2)
+
+#  SLC23A2     chr20-4795305-4795805            Mouse 0.0449206033  2.124823
+#  TMEM230     chr20-4794795-4795295 
+
+GenomicRanges::distance(StringToGRanges("chr20-4795305-4795805"),Signac:::FindRegion(human,region = "SLC23A2"))
+GenomicRanges::distance(StringToGRanges("chr20-4794795-4795295"),Signac:::FindRegion(human,region = "TMEM230"))
+
+#FPGS
+atot1<-CoveragePlot(mouse,region = "FPGS",region.highlight = StringToGRanges("chr9-127566473-127566973"),extend.upstream = 250000)
+atot2<-CoveragePlot(mouse,region = "FPGS",region.highlight = StringToGRanges("chr9-127566473-127566973"),extend.upstream = 250000)
+all_cov4<-wrap_plots(list(atot1,atot2),ncol = 1,nrow = 2)
+
+
+
+
+
+
+```
+AF
+```{r}
+gwas="AF"
+trait_shared<-read.table(file=paste0(file_loc,gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+trait_human<-read.table(file=paste0(file_loc,"human_DA_",gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+trait_mouse<-read.table(file=paste0(file_loc,"mouse_DA_",gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+
+trait_shared$coord<-paste0(paste0("chr",trait_shared$CHR),"-",trait_shared$POS+1,"-",trait_shared$POS+2)
+trait_shared$coord_peak_hg38<-apply(X = trait_shared[,22:34],MARGIN = 1,FUN=function(x){unique(sort(as.character(x)))[-1]})
+Human_hg38_annotation<-Annotation(human)[Annotation(human)$gene_biotype=="protein_coding"]
+SNP_all_trait_sh<-StringToGRanges(paste(paste0("chr",trait_shared$CHR),trait_shared$POS+1,trait_shared$POS+2,sep = "-"))
+Peaks_all_trait_sh<-StringToGRanges(trait_shared$coord_peak_hg38,sep = c("_","_"))
+#Peaks_all_trait_sh<-sort(StringToGRanges(unique(trait_shared$Hepatocytes)[-1],sep = c("_","_")))
+#concatinate what it is presernt in
+TorF_mat<-matrix(data = rep(trait_shared$coord_peak_hg38,times=13),ncol = 13,nrow = dim(trait_shared)[1])==trait_shared[,22:34]
+trait_shared$present_in<-apply(TorF_mat,MARGIN = 1,FUN=function(x){paste(colnames(TorF_mat)[x],collapse = ",")})
+values(Peaks_all_trait_sh)<-DataFrame(gene=ClosestFeature(annotation = Human_hg38_annotation,object = human,regions = Peaks_all_trait_sh)$gene_name,distance=ClosestFeature(annotation = Human_hg38_annotation,object = human,Peaks_all_trait_sh)$distance,SNPpos=GRangesToString(SNP_all_trait_sh),present_in=trait_shared$present_in)
+
+
+
+
+trait_shared[trait_shared$present_in=="Cardiomyocytes",]
+
+
+#KCNH2
+
+sites<-StringToGRanges(shared_DA$Cardiomyocytes$feature_hg38_universal)
+sites2<-StringToGRanges(shared10k$Cardiomyocytes)
+KCNH2<-LookupGeneCoords("KCNH2",object = human)
+
+findOverlapPairs(sites,KCNH2)
+findOverlapPairs(sites2,KCNH2)
+#top is StringToGRanges("chr7-150964551-150965051")
+ph<-CoveragePlot(human,region = "KCNH2",links = T,region.highlight = StringToGRanges("chr7-150964551-150965051"))
+pm<-CoveragePlot(mouse,region = "KCNH2",links = T,region.highlight = StringToGRanges("chr7-150964551-150965051"))
+
+ph<-CoveragePlot(human,region = "KCNH2",links = T,region.highlight = sites2[queryHits(findOverlaps(sites2,KCNH2))])
+pm<-CoveragePlot(mouse,region = "KCNH2",links = T,region.highlight = sites2[queryHits(findOverlaps(sites2,KCNH2))])
+
+
+
+wrap_plots(list(ph,pm),ncol = 1,nrow = 2)
+
+ph<-CoveragePlot(human,region = "KCNJ5",links = T,region.highlight = ])
+pm<-CoveragePlot(mouse,region = "KCNJ5",links = T,region.highlight = sites2[queryHits(findOverlaps(sites2,KCNH2))])
+
+
+potchannel<-unique(GWAS_list_large$AF_2018[GWAS_list_large$AF_2018$present_in.x=="Cardiomyocytes",])
+potchannel<-potchannel[potchannel$gene=="KCNJ5",]
+#KCNJ5
+
+ph<-CoveragePlot(human,region = "KCNJ5",links = T,region.highlight = StringToGRanges(unique(potchannel$coord_peak_hg38),sep = c("_","_")))
+pm<-CoveragePlot(mouse,region = "KCNJ5",links = T,region.highlight = StringToGRanges(unique(potchannel$coord_peak_hg38),sep = c("_","_")))
+
+frac_trait_per_celltype<-list()
+for (i in names(GWAS_list_large)){
+trait_unique<-unique(GWAS_list_large[[i]][,c(1,30:43)])
+trait_unique<-trait_unique[,c(2:14)]
+trait_unique[trait_unique!="."]<-1
+trait_unique[trait_unique=="."]<-0
+num_peaks<-dim(trait_unique)[1]
+if(num_peaks>5){
+overlap<-apply(trait_unique,MARGIN = 2,FUN = function(x){sum(as.numeric(x))})
+frac_overlap<-overlap/num_peaks
+frac_trait_per_celltype[[i]]<-as.numeric(frac_overlap)
+}
+}
+
+frac_sites_that_has_a_tf_and_SNP<-do.call("rbind", frac_trait_per_celltype)
+#  bind_rows(frac_trait_per_celltype, .id = "column_label")
+
+colnames(frac_sites_that_has_a_tf_and_SNP)<-names(frac_overlap)
+
+Heatmap(frac_sites_that_has_a_tf_and_SNP)
+
+write.csv(frac_sites_that_has_a_tf_and_SNP,"/home/torkenczyk/H_M_chromatin_atlas/human_data/Gwas_tf_snp.csv")
+
+
+colSums(AF_unique)
+
+
+frac_sites_that_has_a_tf_and_SNP[order(frac_sites_that_has_a_tf_and_SNP[,9],decreasing = T),]
+
+
+Gout_present<-(table(GWAS_list_large$Gout_2019[GWAS_list_large$Gout_2019$Enterocytes!=".",]$motif,GWAS_list_large$Gout_2019[GWAS_list_large$Gout_2019$Enterocytes!=".",]$coord_peak_hg38))
+Dyslipidemia_UKB_present<-(table(GWAS_list_large$Dyslipidemia_UKB[GWAS_list_large$Dyslipidemia_UKB$Hepatocytes!=".",]$motif,GWAS_list_large$Dyslipidemia_UKB[GWAS_list_large$Dyslipidemia_UKB$Hepatocytes!=".",]$coord_peak_hg38))
+
+
+covid19_B2<-(table(GWAS_list_large$covid19_B2[GWAS_list_large$covid19_B2$Pneumocytes!=".",]$motif,GWAS_list_large$covid19_B2[GWAS_list_large$covid19_B2$Pneumocytes!=".",]$coord_peak_hg38))
+
+
+covid19_B2
+
+
+AF_present<-(table(GWAS_list_large$AF_2018[GWAS_list_large$AF_2018$Cardiomyocytes!=".",]$motif,GWAS_list_large$AF_2018[GWAS_list_large$AF_2018$Cardiomyocytes!=".",]$coord_peak_hg38))
+AF_present<-AF_present[order(AF_present,decreasing = T)]
+transform_AF<-GWAS_list_large$AF_2018[GWAS_list_large$AF_2018$Cardiomyocytes!=".",]$motif_name
+sapply(names(AF_present)
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

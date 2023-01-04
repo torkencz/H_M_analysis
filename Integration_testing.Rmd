@@ -3,7 +3,7 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-internal functions
+internal functions for doing comparisons
 
 ```{r}
 
@@ -79,11 +79,63 @@ return(top_percent_neighbors)
 
 
 ```
+First just look at the  20 closest neighbors for the mouse depending on liftover parameter
+```{r}
+
+
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_mouse_tissues.rds")
+
+
+Celltype_dictionary_mouse<-mouse$cell_label
+names(Celltype_dictionary_mouse)<-row.names(mouse[[]])
+
+
+
+top_n_neighbors<-function(object,assay="cre",k=20)
+{
+DefaultAssay(object)<-assay
+  print(object)
+if(is.null(object)){stop("object not found")}
+object <- RunTFIDF(object)
+object <- FindTopFeatures(object, min.cutoff = 'q0')
+object <- RunSVD(object = object,assay=assay,  reduction.key = paste0("lsi",assay,"_"),reduction.name =  paste0("lsi",assay))
+ktest<-FindNeighbors(object = object,reduction = paste0("lsi",assay),assay =assay, k.param = k, graph.name ="atac_neighbor_top",compute.SNN = T ,dims = 2:30 )
+atac_top_neighbors<-ktest@graphs$atac_neighbor_top
+#now top 20
+mouse_atac_20_sel<-apply(atac_top_neighbors,1,function(x)dimnames(atac_top_neighbors)[[2]][which(x==1)])
+test_self<-matrix(data = rep(colnames(mouse_atac_20_sel),times=20), nrow=20, ncol=length(colnames(mouse_atac_20_sel)), byrow=TRUE)
+mouse_atac_20_self_rem<-matrix(mouse_atac_20_sel[mouse_atac_20_sel!=test_self],ncol=length(colnames(mouse_atac_20_sel)),nrow=19)
+colnames(mouse_atac_20_self_rem)<-colnames(mouse_atac_20_sel)
+mouse_atac_20_celltypes<-apply(mouse_atac_20_self_rem,2,function(x){Celltype_dictionary_mouse[x]})
+cellypes_orig_cell<-apply(test_self,2,function(x){Celltype_dictionary_mouse[x]})[-1,]
+matches_mouse<-mouse_atac_20_celltypes==cellypes_orig_cell
+mouse_percent_neighbors<-colSums(matches_mouse)/19
+return(mouse_percent_neighbors)  
+}
+
+creexmp<-top_n_neighbors(object = mouse,assay="cre")
+cre05<-top_n_neighbors(object = mouse,assay="cre05")
+cre99<-top_n_neighbors(object = mouse,assay="cre99")
+mm10<-top_n_neighbors(object = mouse,assay="mm10")
+mm9<-top_n_neighbors(object = mouse,assay="mm9")
+
+all_mouse_frac<-rbind(data.frame(frac=creexmp,annot="cre095"),data.frame(frac=cre05,annot="cre05"),data.frame(frac=cre99,annot="cre99"),data.frame(frac=mm9,annot="mm9"),data.frame(frac=mm10,annot="mm10"))
+
+all_mouse_frac<-data.frame(cre095=creexmp,cre05=cre05,cre99=cre99,mm9=mm9,mm10=mm10)
+
+col_fun = colorRamp2(c(0.97,0.985,1), c("#08306b", "#bcbddc" ,"#67000d"))
+write.table(x = as.matrix(all_mouse_frac),file="/brahms/torkenczyk/H_M_storage/analysis/objects//Mouse_liftover_percent_cell_matched.txt",sep="\t",quote=F)
+Heatmap(cosine(as.matrix(all_mouse_frac)),col = col_fun)
+pdf("/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/Mouse_cre_comp.pdf")
+Heatmap(cosine(as.matrix(all_mouse_frac)),col = col_fun)
+dev.off()
+```
 
 
 
 
 
+Integration between species
 ```{r}
 #dependencies
 library(Signac)
@@ -104,8 +156,8 @@ require(spam64)
 library(reshape2)
 library(dplyr)
 
-human_all_atac<-readRDS("~/share_Yuhan/Human_5kb_bins.rds")
-mouse_select_atac<-readRDS("~/share_Yuhan/Mouse_5kb_bins.rds")
+human_all_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects//Human_5kb_bins.rds")
+mouse_select_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Mouse_5kb_bins.rds")
 
 
 human_all_atac$species<-"human"
@@ -151,10 +203,766 @@ DimPlot(integrated_H_M_cre, pt.size = 1,group.by='species')
 
 integrated_H_M<-integrated_H_M_cre
 ```
+
+
+#identify clusters based on abundance 
+```{r}
+
+#integration done via 
+
+
+Human_hlight<-list()
+Mouse_hlight<-list()
+for (i in levels(as.factor(integrated_H_M$celltype)))
+{
+  print(i)
+MN<-names(integrated_H_M$celltype[integrated_H_M$celltype==i & integrated_H_M$species=="mouse"])
+HN<-names(integrated_H_M$celltype[integrated_H_M$celltype==i & integrated_H_M$species=="human"])
+if(length(MN)!=0)
+{
+Mouse_hlight[[i]]<-DimPlot(integrated_H_M, pt.size = 0.5,label = T,cells.highlight = MN,raster = F) + ggplot2::ggtitle(paste("Mouse",i,sep = " "))+theme(legend.position = "none")
+}
+if(length(HN)!=0)
+{
+Human_hlight[[i]]<-DimPlot(integrated_H_M, pt.size = 0.5,label = T,cells.highlight = HN,raster = F) + ggplot2::ggtitle(paste("Human",i,sep = " "))+theme(legend.position = "none")
+}
+}
+
+ggsave(wrap_plots(Human_hlight, ncol = 7,nrow = 5),width = 30,height = 20,units = "in",filename = "Human_cells_hlight_cellsketch.png")
+ggsave(wrap_plots(Mouse_hlight, ncol = 7,nrow = 5),width = 30,height = 20,units = "in",filename = "Mouse_cells_hlight_cellsketch.png")
+
+integrated_H_M <- FindNeighbors(object = integrated_H_M, reduction = 'integrated_dr', dims = 2:100)
+integrated_H_M <- FindClusters(object = integrated_H_M, verbose = T, algorithm = 3,resolution = 0.5)
+pcl <-DimPlot(object = integrated_H_M, label = TRUE,raster = F,group.by = "humanPeaks_snn_res.0.8") + NoLegend()+ ggplot2::ggtitle("res 0.8")
+pc2 <-DimPlot(object = integrated_H_M, label = TRUE,raster = F,group.by = "humanPeaks_snn_res.0.5") + NoLegend()+ ggplot2::ggtitle("res 0.5")
+pc3 <-DimPlot(object = integrated_H_M, label = TRUE,raster = F,group.by = "humanPeaks_snn_res.0.3") + NoLegend()+ ggplot2::ggtitle("res 0.3")
+pc4 <-DimPlot(object = integrated_H_M, label = TRUE,raster = F,group.by = "humanPeaks_snn_res.0.1") + NoLegend()+ ggplot2::ggtitle("res 0.1")
+
+
+#now plot cluster id
+
+
+ct_human=data.frame(celltype=integrated_H_M$celltype[integrated_H_M$species=="human"],cluster=integrated_H_M$humanPeaks_snn_res.0.5[integrated_H_M$species=="human"])
+ct_mouse=data.frame(celltype=integrated_H_M$celltype[integrated_H_M$species=="mouse"],cluster=integrated_H_M$humanPeaks_snn_res.0.5[integrated_H_M$species=="mouse"])
+
+human<-as.data.frame(table(ct_human))
+mouse<-as.data.frame(table(ct_mouse))
+human$cluster<-paste("Cluster",human$cluster,sep = " ")
+mouse$cluster<-paste("Cluster",mouse$cluster,sep = " ")
+human$celltype<-paste("Human",human$celltype,sep = " ")
+mouse$celltype<-paste("Mouse",mouse$celltype,sep = " ")
+
+human<-t(acast(human,celltype~cluster,value.var = "Freq"))
+mouse<-t(acast(mouse,celltype~cluster,value.var = "Freq"))
+
+all<-cbind(human,mouse)
+small_clust<-all[which(rowSums(all)<3),]
+all_large_clusters<-all[which(rowSums(all)>3),]
+
+human<-human[which(rowSums(all)>3),]
+mouse<-mouse[which(rowSums(all)>3),]
+library(circlize)
+col_fun1 = colorRamp2(c(0,max(human)),colors=c("white","#b2182b"))
+col_fun2 = colorRamp2(c(0,max(mouse)),colors=c("white","#b2182b"))
+
+
+H1 <- Heatmap(human,col=col_fun1,cluster_rows = FALSE,name = "Human", cluster_columns = FALSE,
+    cell_fun = function(j, i, x, y, width, height, fill) {
+        grid.text(sprintf("%i", human[i, j]), x, y, gp = gpar(fontsize = 10))
+})
+
+H2 <- Heatmap(mouse,col=col_fun2,cluster_rows = FALSE,"Mouse",cluster_columns = FALSE,
+    cell_fun = function(j, i, x, y, width, height, fill) {
+        grid.text(sprintf("%i", mouse[i, j]), x, y, gp = gpar(fontsize = 10))
+})
+
+All_separate<-H1+H2
+
+human<-t(scale(t(human),scale = T,center = T))
+mouse<-t(scale(t(mouse),scale = T,center = T))
+
+all_scaled<-cbind(human,mouse)
+
+col_fun3 = colorRamp2(c(min(all_scaled),max(all_scaled)),colors=c("#18b29f","#b2182b"))
+
+H3 <- Heatmap(t(all_scaled),col=col_fun3,cluster_rows = T,name = "All", cluster_columns = T)
+
+#0.5 is probably the best
+saveRDS(integrated_H_M,file="/brahms/torkenczyk/H_M_storage/analysis/objects/Final_integration_all_bins_CCA.rds")
+# then I after plotting things I removed lower quality clusters this is in next section
+
+```
+
+
+
+#annotate clusters
+```{r}
+library(hash)
+Idents(integrated_H_M)<-paste("Cluster",integrated_H_M$humanPeaks_snn_res.0.5,sep = "_")
+
+cluster_match<-hash()
+
+cluster_match[["Cluster_1"]]<-"Hepatocytes"
+cluster_match[["Cluster_9"]]<-"B-lymphocytes"
+cluster_match[["Cluster_10"]]<-"T-lymphocytes"
+cluster_match[["Cluster_20"]]<-"Smooth muscle cells"
+cluster_match[["Cluster_25"]]<-"Smooth muscle cells"
+cluster_match[["Cluster_29"]]<-"Endothelial cells"
+cluster_match[["Cluster_23"]]<-"Endothelial cells"
+cluster_match[["Cluster_13"]]<-"Endothelial cells"
+cluster_match[["Cluster_14"]]<- "Fibroblasts"
+cluster_match[["Cluster_12"]]<- "Fibroblasts"
+cluster_match[["Cluster_6"]]<-  "Fibroblasts"
+cluster_match[["Cluster_26"]]<- "Fibroblasts"
+cluster_match[["Cluster_28"]]<-  "Fibroblasts"
+cluster_match[["Cluster_7"]]<-"Cardiomyocytes"
+cluster_match[["Cluster_18"]]<-"Cardiomyocytes"
+cluster_match[["Cluster_3"]]<-"Pneumocytes"
+cluster_match[["Cluster_15"]]<-"Pneumocytes"
+cluster_match[["Cluster_16"]]<-"Macrophages"
+cluster_match[["Cluster_4"]]<-"Macrophages"
+cluster_match[["Cluster_24"]]<-"Macrophages"
+
+cluster_match[["Cluster_19"]]<-"Myofibroblasts"
+cluster_match[["Cluster_8"]]<-"Myofibroblasts"
+cluster_match[["Cluster_21"]]<-"Schwann cells"
+cluster_match[["Cluster_11"]]<-"Enterocytes"
+cluster_match[["Cluster_0"]]<-"Enterocytes"
+cluster_match[["Cluster_5"]]<-"Enterocytes"
+cluster_match[["Cluster_17"]]<-"Goblet cells"
+cluster_match[["Cluster_22"]]<-"Goblet cells"
+cluster_match[["Cluster_27"]]<-"Goblet cells"
+
+
+
+#these are mixed and have few cells and a lower TSS enrichment
+cluster_match[["Cluster_2"]]<-"remove" #this is misc
+cluster_match[["Cluster_57"]]<-"remove" #this is misc
+cluster_match[["Cluster_30"]]<-"remove"
+cluster_match[["Cluster_31"]]<-"remove"
+cluster_match[["Cluster_32"]]<-"remove"
+cluster_match[["Cluster_33"]]<-"remove"
+cluster_match[["Cluster_34"]]<-"remove"
+cluster_match[["Cluster_35"]]<-"remove"
+cluster_match[["Cluster_36"]]<-"remove"
+cluster_match[["Cluster_37"]]<-"remove"
+cluster_match[["Cluster_38"]]<-"remove"
+cluster_match[["Cluster_39"]]<-"remove"
+cluster_match[["Cluster_40"]]<-"remove"
+cluster_match[["Cluster_41"]]<-"remove"
+cluster_match[["Cluster_42"]]<-"remove"
+cluster_match[["Cluster_43"]]<-"remove"
+cluster_match[["Cluster_44"]]<-"remove"
+cluster_match[["Cluster_45"]]<-"remove"
+cluster_match[["Cluster_46"]]<-"remove"
+cluster_match[["Cluster_47"]]<-"remove"
+cluster_match[["Cluster_48"]]<-"remove"
+cluster_match[["Cluster_49"]]<-"remove"
+cluster_match[["Cluster_50"]]<-"remove"
+cluster_match[["Cluster_51"]]<-"remove"
+cluster_match[["Cluster_52"]]<-"remove"
+cluster_match[["Cluster_53"]]<-"remove"
+cluster_match[["Cluster_54"]]<-"remove"
+cluster_match[["Cluster_55"]]<-"remove"
+cluster_match[["Cluster_56"]]<-"remove"
+
+
+
+Idents(integrated_H_M)<-hash::values(cluster_match,keys=Idents(integrated_H_M),simplify=T)
+#remove collisions
+Idents(integrated_H_M)[which(integrated_H_M$celltype=="Collisions")]<-"remove"
+
+
+pcannot <-DimPlot(object = integrated_H_M, label = TRUE,raster = F) + NoLegend()+ ggplot2::ggtitle("Hand annotation")
+
+sum(Idents(integrated_H_M)=="remove" & integrated_H_M$species=="human")
+
+sum(Idents(integrated_H_M)=="remove" & integrated_H_M$species=="mouse")
+
+handannot<-as.data.frame(Idents(integrated_H_M))
+names(handannot)<-c("handannot")
+
+human_all_atac<-AddMetaData(metadata = handannot,object=human_all_atac)
+mouse_all_atac<-AddMetaData(metadata = handannot,object=mouse_select_atac)
+
+saveRDS(human_all_atac,"/brahms/torkenczyk/H_M_storage/analysis/objects/All_human_tissues.rds")
+saveRDS(mouse_select_atac,"/brahms/torkenczyk/H_M_storage/analysis/objects/All_mouse_tissues.rds")
+
+```
+#for figuring out the difficult cells, the ones that are in the center. Decided to remove high TSS enrichment ones 
+```{r}
+# region can be a string, name of a gene, or GRanges object
+FindRegion <- function(
+  object,
+  region,
+  sep = c("-", "-"),
+  assay = NULL,
+  extend.upstream = 0,
+  extend.downstream = 0
+) {
+  if (!is(object = region, class2 = "GRanges")) {
+    # if separators are present in the string and we can convert the
+    # start to a number, assume we're using genomic coordinates
+    if (all(sapply(X = sep, FUN = grepl, x = region))) {
+      region <- StringToGRanges(regions = region, sep = sep)
+    } else {
+      region <- LookupGeneCoords(object = object, assay = assay, gene = region)
+      if (is.null(x = region)) {
+        stop("Gene not found")
+      }
+    }
+  }
+  region <- suppressWarnings(expr = Extend(
+    x = region,
+    upstream = extend.upstream,
+    downstream = extend.downstream
+  )
+  )
+  return(region)
+}
+
+
+
+
+plot_rem_orig_comp<-function(gene,upstr=1000,downstr=1000,select_group=NULL,select_group2=NULL,plot_by1="handannot",plot_by2="celltype",highlight_human_reg=NULL){
+  
+  stopifnot(!is.null(select_group))
+  
+  coclustered_groups<-Idents(human_all_atac)
+  human_groups<-human_all_atac$celltype
+  
+  
+  g_cc<-WhichCells(human_all_atac,idents = select_group)
+  g_r<-WhichCells(human_all_atac,idents = "remove")
+  Idents(human_all_atac)<-human_groups
+  g_o<-WhichCells(human_all_atac,idents = select_group2)
+  g_original<-intersect(g_r,g_o)
+  
+  Idents(human_all_atac)<-coclustered_groups
+  
+  
+  
+  plot_subset_object<-subset(human_all_atac,cells = c(g_cc,g_original))
+  #plot_subset_object<-subset(human_all_atac,idents = c(select_group))
+  plot_subset_object$combined<-paste0(plot_subset_object[[plot_by2]][,1],"_",plot_subset_object[[plot_by1]][,1])
+  levs<-levels(as.factor(plot_subset_object$combined))
+  
+  first<-plot_subset_object$combined[c(which(plot_subset_object[[plot_by2]][,1]==select_group),which(plot_subset_object[[plot_by1]][,1]==select_group),which(plot_subset_object[[plot_by1]][,1]=="remove"))]
+  
+  reord_levs<-unique(first)
+  
+  plot_subset_object$combined<-factor(plot_subset_object$combined,levels = reord_levs)
+  
+  cell_cnt<-as.data.frame(table(plot_subset_object$combined))
+  names(cell_cnt)<-c("category","count")
+  cell_cnt$category<-factor(cell_cnt$category,levels = rev(reord_levs))
+  cell_cnt$percent<-cell_cnt$count/sum(cell_cnt$count)
+  
+  cell_cnt<-cell_cnt[which(cell_cnt$percent>0.01),]
+  
+  
+  cell_cnt_p<-ggplot(cell_cnt,aes(y=category,x=count))+geom_bar(stat = "identity")+theme_classic()+ylab("")+xlab("number of cells")+theme(axis.text.y = element_blank(),axis.ticks.y = element_blank())
+  
+  
+  
+  all_plots=list()
+  for (gene_human in gene)
+  {
+  gene_human<-toupper(gene_human)
+  reg_h<-FindRegion(object = human_all_atac,region = gene_human,extend.downstream = downstr,extend.upstream = upstr,assay = "cre")
+
+  print(paste0("plotting human", gene_human," human: ",reg_h))
+
+ human<-CoveragePlot(
+    object = plot_subset_object, 
+    group.by="combined",region = gene_human,assay ="cre",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=F,peaks=F,region.highlight = highlight_human_reg,idents = cell_cnt$category
+  )
+  
+  
+  human2 <- TilePlot(
+  object = plot_subset_object,assay ="cre",group.by="combined",idents = cell_cnt$category,
+  region = reg_h,extend.upstream = upstr,
+  extend.downstream = downstr
+  )
+  
+  
+  gene_plot <- AnnotationPlot(
+  object = plot_subset_object,
+  region = reg_h
+)
+  
+  peak_plot <- PeakPlot(
+  object = plot_subset_object,
+  region = reg_h
+)
+  
+  
+p<-CombineTracks(
+  plotlist = list(human, peak_plot, gene_plot),
+#  expression.plot =cell_cnt_p,
+  heights = c(10, 1, 2),
+  widths = c(9)
+  )
+
+ p2<-CombineTracks(
+  plotlist = list(human2, peak_plot, gene_plot),
+  expression.plot =cell_cnt_p,
+  heights = c(10, 1, 2),
+  widths = c(9, 3)
+  ) 
+  
+    png(filename = paste0("./plots/",gene_human,"_remove_comparison.png"),width = 30,height=25,units = "cm",res=300)
+    print(p)
+    dev.off()
+    
+   png(filename = paste0("./plots/",gene_human,"_remove_comparison2.png"),width = 30,height=25,units = "cm",res=300)
+    print(p2)
+    dev.off()
+    
+    png(filename = paste0("./plots/",gene_human,"_remove_comparison_comb.png"),width = 50,height=25,units = "cm",res=300)
+    print(p|p2)
+    dev.off()
+    
+   all_plots[[gene_human]]<-p | p2
+  
+  }
+    return(all_plots)
+  
+}
+
+
+
+human_all_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/All_human_tissues.rds")
+#human_all_atac<-readRDS("active_use_objects/Select_human_tissues.rds")
+
+mouse_select_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/All_mouse_tissues.rds")
+#human_all_atac<-readRDS("oject_files/Human_plotting.rds")
+Idents(human_all_atac)<-human_all_atac$handannot
+human_all_atac$celltype[which(is.na(human_all_atac$celltype))]<-"unknown"
+
+
+humanhand<-human_all_atac[["handannot"]]
+row.names(humanhand)<-str_split_fixed(row.names(humanhand),pattern = "_",n = 2)[,2]
+meta_all<-rbind(humanhand,mouse_select_atac[["handannot"]])
+
+#testing human signal between remove subgroup and original
+
+
+#cardiomyocytes
+
+
+#Cardiomyocyte
+carlist<-plot_rem_orig_comp(gene = c("MYH6","MYH7","SGCA"),select_group ="Cardiomyocytes",select_group2 ="Cardiomyocytes" )
+#hepatocytes
+heplist<-plot_rem_orig_comp(gene = c("AFP","CRP"),select_group="Hepatocytes",select_group2 ="Hepatocytes")
+#Myofibroblast
+Mfib<-plot_rem_orig_comp(gene = c("MYH11","CARMN"),select_group="Myofibroblasts",select_group2 ="Myofibroblasts")
+#Schwann cells
+Schwann<-plot_rem_orig_comp(gene = c("PLP1","SOX10","S100B", "EGR2", "MBP", "MPZ"),select_group="Schwann cells",select_group2 = "Schwann cells")
+#Fibroblast
+fib<-plot_rem_orig_comp(gene = c("SERPINH1", "NID1"),select_group="Fibroblasts",select_group2 ="Fibroblasts")
+#Bcells
+Bcells<-plot_rem_orig_comp(gene = c("STK17B", "ITGA4", "IL12A"),select_group="B-lymphocytes",select_group2 = "B lymphocytes")
+#Pneumocytes
+PN<-plot_rem_orig_comp(gene = c("IRX2","SFTPB", "WNT3A", "ESRP1","SACS"),select_group="Pneumocytes",select_group2 = "Type II pneumocytes")
+
+
+#Goblet cells
+GB<-plot_rem_orig_comp(gene = c("MUC2"),select_group="Goblet cells",select_group2 = "Goblet cells")
+#endothelial
+END<-plot_rem_orig_comp(gene = c("SHANK3","ENG","ESRP1","CPA6"),select_group="Endothelial cells",select_group2 = "Endothelial cells")
+#enterocytes
+ENT<-plot_rem_orig_comp(gene = c("CDX2","GPA33","CORO2A","ATP6V0D1"),select_group="Enterocytes",select_group2 = "Enterocytes")
+#macrophage
+MAC<-plot_rem_orig_comp(gene = c("IKZF1","SLC11A1"),select_group="Macrophages",select_group2="Macrophages")
+
+
+plot_combined_cross_species(gene="IRX2")
+
+#seems like not really
+
+#what us different about these
+
+integrated_H_M<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Final_integration_all_bins_CCA.rds")
+integrated_H_M<-AddMetaData(integrated_H_M,metadata = meta_all)
+
+
+#doin DE on the LSI emberddings
+a<-t(Embeddings(integrated_H_M,reduction = "integrated_dr" ))
+integrated_H_M[['LSI']]<-
+  CreateAssayObject(
+  counts=a
+)
+
+Idents(integrated_H_M)<-integrated_H_M$handannot
+DefaultAssay(integrated_H_M)<-'LSI'
+all<-FindAllMarkers(integrated_H_M,test.use = 'LR',
+)
+
+all[which(all$cluster=="remove" & all$avg_log2FC>0),]
+
+#LSI 2 is cardiomyosites
+FeaturePlot(integrated_H_M, features = "integrateddr-61",min.cutoff = 0,raster = F)
+
+VlnPlot(integrated_H_M, features = "integrateddr-58")
+VlnPlot(integrated_H_M, features = "integrateddr-61")
+VlnPlot(integrated_H_M, features = "integrateddr-44")
+
+n <- 10
+peaks_select<-Load_tissue[Load_tissue$LSI_2 > quantile(Load_tissue$LSI_2,prob=1-n/100),]
+ggplot(data=Load_tissue,aes(x=Load_tissue$LSI_2))+geom_histogram()+geom_vline(xintercept = quantile(Load_tissue$LSI_2,prob=1-n/100))+theme_classic()+ylab(label="Counts")+xlab(label="LSI-2 loadings score")
+top_10_lsi2<-StringToGRanges(row.names(peaks_select))
+
+
+
+a<-t(Embeddings(human_all_atac,reduction = "lsi" ))
+
+human_all_atac[['LSI']]<-
+  CreateAssayObject(
+  counts=a
+)
+DefaultAssay(human_all_atac)<-'LSI'
+hall<-FindAllMarkers(human_all_atac,test.use = 'LR')
+
+hall[which(hall$cluster=="remove" & hall$avg_log2FC>0),]
+
+VlnPlot(human_all_atac, features = "LSI-45")
+VlnPlot(human_all_atac, features = "LSI-24")
+VlnPlot(human_all_atac, features = "LSI-38")
+
+FeaturePlot(human_all_atac, features = "LSI-45",min.cutoff = 0,max.cutoff = 5,raster = F)
+FeaturePlot(human_all_atac, features = "LSI-24",min.cutoff = 0,max.cutoff = 5,raster = F)
+FeaturePlot(human_all_atac, features = "LSI-38",min.cutoff = 0,max.cutoff = 5,raster = F)
+
+g_r<-WhichCells(human_all_atac,idents = "remove")
+
+hr<-table(human_all_atac[[]][human_all_atac[[]]$handannot=="remove",]$celltype)
+mr<-table(mouse_select_atac[[]][mouse_select_atac[[]]$handannot=="remove",]$cell_label)
+
+hr<-as.data.frame(hr)
+ph<-ggplot(hr,aes(y=Freq,x=Var1))+geom_bar(stat = "identity")+theme_classic()+ylab(label="Frequency")+xlab(label="")+ggtitle("Remove cells human")+coord_flip()
+mr<-as.data.frame(mr)
+pm<-ggplot(mr,aes(y=Freq,x=Var1))+geom_bar(stat = "identity")+theme_classic()+ylab(label="Frequency")+xlab(label="")+ggtitle("Remove cells mouse")+coord_flip()
+
+
+ph+pm
+
+
+#lets look at DA between remove and non remove cells
+
+cats<-unique(Idents(human_all_atac))
+
+
+
+remove_m_list<-list()
+for (i in levels(as.factor(mouse_select_atac$cell_label)))
+{
+  print(i)
+  Idents(mouse_select_atac)<-mouse_select_atac$cell_label
+  g_c<-WhichCells(mouse_select_atac,idents = i)
+  
+  plot_subset_object<-subset(mouse_select_atac,cells = g_c)
+  
+  
+  Idents(plot_subset_object)<-plot_subset_object$handannot
+  
+  print(table(Idents(plot_subset_object)))
+  if(sum(Idents(plot_subset_object)=="remove")>10 & sum(Idents(plot_subset_object)=="remove")/length(Idents(plot_subset_object))>0.1 & sum(Idents(plot_subset_object)=="remove")/length(Idents(plot_subset_object))<0.9)
+  {
+ remove_m_list[[i]] <- FindMarkers(
+  object = plot_subset_object,ident.1 = "remove",only.pos = T,assay = "cre",
+  test.use = 'LR',
+  min.pct = 0,
+  latent.vars = 'nCount_cre',
+  )
+  }
+}
+
+#nothing meaningful
+
+
+da_peaks_human <- FindAllMarkers(
+  object = human_all_atac,
+  test.use = 'LR',
+  min.pct = 0,
+  latent.vars = 'nCount_creprun'
+)
+
+  
+  
+remove_h_list<-list()
+for (i in levels(as.factor(human_all_atac$celltype)))
+{
+  print(i)
+  Idents(human_all_atac)<-human_all_atac$celltype
+  g_c<-WhichCells(human_all_atac,idents = i)
+  
+  plot_subset_object<-subset(human_all_atac,cells = g_c)
+  
+  
+  Idents(plot_subset_object)<-plot_subset_object$handannot
+  
+  print(table(Idents(plot_subset_object)))
+  if(sum(Idents(plot_subset_object)=="remove")>10 & sum(Idents(plot_subset_object)=="remove")/length(Idents(plot_subset_object))>0.1 & sum(Idents(plot_subset_object)=="remove")/length(Idents(plot_subset_object))<0.9)
+  {
+ remove_h_list[[i]] <- FindMarkers(
+  object = plot_subset_object,ident.1 = "remove",only.pos = T,assay = "cre",
+  test.use = 'LR',
+  min.pct = 0,
+  latent.vars = 'nCount_cre',
+  )
+  }
+}
+
+
+remove_m_list$`B cells`
+
+
+library(reshape2)
+a<-as.data.frame(table(data.frame(human_all_atac$handannot,human_all_atac$ID1)))
+b<-acast(a, human_all_atac.handannot~human_all_atac.ID1, value.var="Freq")
+Heatmap(b)
+
+VlnPlot(human_all_atac,features = "Num_fragments",group.by = "Cell.Type")
+FeaturePlot(human_all_atac,features = "Num_fragments")
+
+DimPlot(human_all_atac,group.by = "Abbreviation",label=T)
+
+
+
+
+
+human_all_atac <- FindTopFeatures(human_all_atac, min.cutoff = 1000)
+human_all_atac <- RunSVD(human_all_atac,n = 100)
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+p1000dc<-DepthCor(human_all_atac)
+p1000<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")
+
+p1000high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")
+
+
+#128169 variable features (using this)
+human_all_atac <- FindTopFeatures(human_all_atac, min.cutoff = 1500)
+human_all_atac <- RunSVD(human_all_atac,n = 100)
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+p1500dc<-DepthCor(human_all_atac)
+p1500<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")
+p1500high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")
+
+#test number of LSI
+
+p1500high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")
+
+
+
+human_all_atac <- FindTopFeatures(human_all_atac, min.cutoff = 2000)
+human_all_atac <- RunSVD(human_all_atac,n = 100)
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+p2000dc<-DepthCor(human_all_atac)
+p2000<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")
+p2000high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")
+
+
+
+human_all_atac <- FindTopFeatures(human_all_atac, min.cutoff = 2500)
+human_all_atac <- RunSVD(human_all_atac,n = 100)
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+p2500dc<-DepthCor(human_all_atac)
+p2500<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")
+p2500high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")
+
+human_all_atac <- FindTopFeatures(human_all_atac, min.cutoff = 3000)
+human_all_atac <- RunSVD(human_all_atac,n = 100)
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+p3000dc<-DepthCor(human_all_atac)
+p3000<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")
+p3000high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")
+
+human_all_atac <- FindTopFeatures(human_all_atac, min.cutoff = 4000)
+human_all_atac <- RunSVD(human_all_atac,n = 100)
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+p4000dc<-DepthCor(human_all_atac)
+p4000<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")
+p4000high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")
+
+
+human_all_atac <- FindTopFeatures(human_all_atac, min.cutoff = 5000)
+human_all_atac <- RunSVD(human_all_atac,n = 100)
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+p5000dc<-DepthCor(human_all_atac)
+p5000<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")
+p5000high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")
+
+
+
+wrap_plots(Pallhigh,nrow = 2,ncol = 3)
+Pallhigh<-list(p1500high,p2000high,p2500high,p3000high,p4000high,p5000high)
+
+Palldch<-list(p1500dc,p2000dc,p2500dc,p3000dc,p4000dc,p5000dc)
+wrap_plots(Palldch,nrow = 2,ncol = 3)
+
+
+
+#TSS enrichment and depth coverage
+human_all_atac$remove<-human_all_atac$handannot=="remove"
+mouse_all_atac$remove<-mouse_all_atac$handannot=="remove"
+VlnPlot(human_all_atac,features = "Num_fragments",group.by = 'Abbreviation',split.by = "remove",log = T)+geom_boxplot()
+VlnPlot(human_all_atac,features = "nCount_peaks" ,group.by = 'Abbreviation',split.by = "remove",log = T)+geom_boxplot()
+
+VlnPlot(human_all_atac,features = "nFeature_peaks" ,group.by = 'Abbreviation',split.by = "remove",log = T)+geom_boxplot()
+
+VlnPlot(human_all_atac,features = "TSSe" ,group.by = 'Abbreviation',split.by = "remove",log = F)+geom_boxplot()
+VlnPlot(human_all_atac,features = "Fraction_Mito" ,group.by = 'Abbreviation',split.by = "remove",log = F)+geom_boxplot()
+
+VlnPlot(human_all_atac,features = "Doublet_score" ,group.by = 'Abbreviation',split.by = "remove",log = F)+geom_boxplot()
+
+# compute nucleosome signal score per cell
+human_all_atac <- NucleosomeSignal(object = human_all_atac)
+
+# compute TSS enrichment score per cell
+human_all_atac <- TSSEnrichment(object = human_all_atac, fast = FALSE)
+mouse_all_atac <- TSSEnrichment(object = mouse_all_atac, fast = FALSE)
+
+p1<-VlnPlot(human_all_atac,features = "TSS.enrichment" ,group.by = 'Cell.Type',split.by = "remove",log = F)+geom_boxplot()
+p2<-VlnPlot(mouse_all_atac,features = "TSS.enrichment" ,group.by = 'cell_label',split.by = "remove",log = F)+geom_boxplot()
+
+p3<-VlnPlot(human_all_atac,features = "TSS.enrichment" ,group.by = 'remove',log = F)+geom_boxplot()
+p4<-VlnPlot(mouse_all_atac,features = "TSS.enrichment" ,group.by = 'remove',log = F)+geom_boxplot()
+
+
+TSScomp_h<-data.frame(TSS=human_all_atac$TSS.enrichment,remove=human_all_atac$remove)
+TSScomp_m<-data.frame(TSS=mouse_all_atac$TSS.enrichment,remove=mouse_all_atac$remove)
+
+library(ggpubr)
+
+# Visualize: Specify the comparisons you want
+my_comparisons <- list( c("TRUE","FALSE"))
+p_h_comp<-ggboxplot(TSScomp_h, x = "remove", y = "TSS",fill = "remove", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 5)+ylab("TSS enrichment human")+ylim(c(0,10))
+
+p_m_comp<-ggboxplot(TSScomp_m, x = "remove", y = "TSS",fill = "remove", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons,)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 5)+ylab("TSS enrichment mouse")+ylim(c(0,10))
+
+p_h_comp|p_m_comp
+
+mouse_select_atac
+
+
+human_all_atac[[]]
+
+VlnPlot(human_all_atac,group.by = 'Abbreviation')
+
+human_all_atac$frac_reads_in_cre<-colSums(GetAssayData(human_all_atac, assay = "cre", slot = "counts"))/human_all_atac$Num_fragments
+VlnPlot(human_all_atac,features = "frac_reads_in_cre" ,group.by = 'Abbreviation',split.by = "remove",log = F)+geom_boxplot()
+
+
+
+
+TSSecorr<-function (object, assay = NULL, reduction = "lsi", n = 10, ...) 
+{
+    if(is.null(assay)){assay<-DefaultAssay(object = object)}
+    
+    dr <- object[[reduction]]
+    embed <- Embeddings(object = dr)
+    counts <- object[["TSSe"]]
+    naloc<-which(!is.na(human_all_atac[["TSSe"]]))
+    embed <- embed[rownames(x = counts), ]
+    if(is.null(n)){n<-ncol(x = embed)}
+    embed <- embed[, seq_len(length.out = n)]
+    depth.cor <- as.data.frame(cor(x = embed[naloc,], y = counts[naloc,], ...))
+    depth.cor$counts <- depth.cor[, 1]
+    depth.cor$Component <- seq_len(length.out = nrow(x = depth.cor))
+    p <- ggplot(depth.cor, aes(Component, counts)) + geom_point() + 
+        scale_x_continuous(n.breaks = n, limits = c(1, n)) + 
+        ylab("Correlation") + ylim(c(-1, 1)) + theme_light() + 
+        ggtitle("Correlation between TTSe and reduced dimension components", 
+            subtitle = paste0("Assay: ", assay, "\t", "Reduction: ", 
+                reduction))
+    return(p)
+}
+TSSecorr(human_all_atac)
+#aggregate tiles 
+
+#play with LSI components
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+p230<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")+ggtitle("comp 2:30")
+p230high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")+ggtitle("comp 2:30")
+
+#play with LSI components
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 4:30)
+p430<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")+ggtitle("comp 4:30")
+p430high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")+ggtitle("comp 4:30")
+
+#play with LSI components
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 8:30)
+p830<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")+ggtitle("comp 8:30")
+p830high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")+ggtitle("comp 8:30")
+
+#play with LSI components
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 8:100)
+p8100<-DimPlot(human_all_atac,group.by = "Abbreviation",label=T,raster = F)+ theme(legend.position = "none")+ggtitle("comp 8:100")
+p8100high<-DimPlot(human_all_atac,group.by = "handannot",label=T,cells.highlight = WhichCells(human_all_atac,idents = "remove"),raster = F,sizes.highlight = 0.1)+ theme(legend.position = "none")+ggtitle("comp 8:100")
+
+#aggregate tiles 
+AggregateTiles(human_all_atac)
+
+
+#based on this a subset of clusters have lower TSS enrichment, we decided to remove these cells
+```
+
+#plotting the rest
+```{r}
+library(circlize)
+col_fun = colorRamp2(c(-3,0,3), c("#08306b", "#bcbddc" ,"#67000d"))
+H4 <- Heatmap(t(all_scaled),col=col_fun,cluster_rows = T,name = "All", cluster_columns = T)
+pdf("/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/Abundances_zscored_removed_center.pdf",width = 10,height = 8)
+H4
+dev.off()
+
+pc_species <-DimPlot(object = integrated_H_M, label = TRUE,raster = F,group.by = "species") + NoLegend()+ ggplot2::ggtitle("species")
+pc_clust <-DimPlot(object = integrated_H_M, label = TRUE,raster = F,group.by = "humanPeaks_snn_res.0.5") + NoLegend()+ ggplot2::ggtitle("clusters")
+pc_celltype <-DimPlot(object = integrated_H_M, label = TRUE,raster = T) + ggplot2::ggtitle("")
+ggsave(pc_species,filename = "/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/UMAP_int_species_removed_center.pdf")
+ggsave(pc_clust,filename = "/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/UMAP_int_cluster_removed_center.pdf")
+ggsave(pc_celltype,filename = "/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/UMAP_int_ct_removed_center2.pdf")
+
+library(rcartocolor)
+
+safe_colorblind_palette <- c("#88CCEE", "#CC6677", "#DDCC77", "#117733", "#332288", "#AA4499", 
+                             "#44AA99", "#999933", "#882255", "#661100", "#6699CC", "#888888","#4f4d4d")
+scales::show_col(safe_colorblind_palette)
+display_carto_pal(2, "Safe")
+
+safe_colorblind_species <- c("#005AB5","#DC3220")
+
+library(rcartocolor)
+display_carto_all(colorblind_friendly = TRUE)
+
+
+pc_species <-DimPlot(object = integrated_H_M, label = F,raster = T,group.by = "species",cols=safe_colorblind_species) + ggplot2::ggtitle("")+ NoLegend()
+pc_clust <-DimPlot(object = integrated_H_M, label = TRUE,raster = T,group.by = "humanPeaks_snn_res.0.5")
+pc_celltype <-DimPlot(object = integrated_H_M, label = TRUE,raster = T,cols = safe_colorblind_palette) + ggplot2::ggtitle("")+ NoLegend()
+ggsave(pc_species,filename = "/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/UMAP_int_species_removed_center_cbsf.pdf")
+ggsave(pc_clust,filename = "/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/UMAP_int_cluster_removed_center.pdf")
+ggsave(pc_celltype,filename = "/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/UMAP_int_ct_removed_center2_cbsf.pdf")
+
+
+
+
+
+
+
+```
+
+
 Lets look at the nearest neighbors situation
 
 ```{r}
-integrated_H_M<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/Final_integration_all_bins_CCA.rds")
+integrated_H_M<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects//Final_integration_all_bins_CCA.rds")
 
 integrated_H_M_narem<-subset(integrated_H_M, subset = celltype != "Unknown")
 integrated_H_M_narem_f<-subset(integrated_H_M_narem, subset = celltype != "unknown")
@@ -166,7 +974,7 @@ names(Celltype_dictionary_top)<-row.names(integrated_H_M_narem_f[[]])
 
 top_n_res<-top_n_neighbors(integrated_H_M_narem_f)
 
-write.table(top_n_res,"/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched.txt",quote = F,sep = "\t",row.names = T,col.names = T)
+write.table(top_n_res,"/brahms/torkenczyk/H_M_storage/analysis/objects//All_bins_human_mouse_frac_matched.txt",quote = F,sep = "\t",row.names = T,col.names = T)
 ggplot(top_n_res,aes(x=species,y=percent_matched))+geom_violin()
 
 Celltype_dictionary_top<-integrated_H_M$celltype
@@ -214,19 +1022,54 @@ colnames(k50_neighbors_mat)<-colnames(k50_neighbors)
 
 col_fun = colorRamp2(c(-6,0,6), c("#08306b", "#bcbddc" ,"#67000d"))
 col_fun2 = colorRamp2(breaks = c(0,2000,4000),colors =  c("#08306b", "#bcbddc" ,"#67000d"))
-write.table(x = as.matrix(k50_neighbors_mat),file="/home/torkenczyk/H_M_chromatin_atlas/human_data/Mouse_k50_neighbors_mat.txt",sep="\t",quote=F)
+write.table(x = as.matrix(k50_neighbors_mat),file="/brahms/torkenczyk/H_M_storage/analysis/objects//Mouse_k50_neighbors_mat.txt",sep="\t",quote=F)
 A2<-Heatmap(matrix = k50_neighbors_mat,col = col_fun2)
 A1<-Heatmap(matrix = t(scale(t(k50_neighbors_mat))),col = col_fun)
 
-pdf("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_conf_k50_zscored.pdf")
+pdf("/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/Mouse_conf_k50_zscored.pdf")
 A1
 dev.off()
 
-pdf("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_conf_k50.pdf")
+pdf("/brahms/torkenczyk/H_M_storage/analysis/objects//plots/paper_pdfs/Mouse_conf_k50.pdf")
 A2
 dev.off()
 
 
+
+#integrated.LSI,file="Integrated_rLSI_cre.rds"
+
+#how to properly do silhouette()
+
+#integrated_H_Mtest <- subset(x = integrated_H_M, downsample = 100)
+library(Seurat)
+integrated_H_M<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects//Final_integration_all_bins_CCA.rds")
+library(cluster, quietly = TRUE)
+dist.matrix <- dist(x = Embeddings(object = integrated_H_M[["integrated_dr"]]))
+clusters <- integrated_H_M$handannot
+sil <- silhouette(x = as.numeric(x = as.factor(x = clusters)), dist = dist.matrix)
+integrated_H_M$sil <- sil[, 3]
+write.table(integrated_H_M[[]],file = "Sil.GA.txt")
+
+FeaturePlot(integrated_H_M,features = "sil")
+ggsave(VlnPlot(integrated_H_M,features = "sil")+NoLegend(),filename = "../Test.png")
+
+
+
+
+
+#mixing metric
+
+MixingMetric(object = integrated_H_Mtest)
+
+
+#local structure
+
+ LocalStruct
+
+ 
+ 
+ 
+ 
 ```
 
 
@@ -298,16 +1141,30 @@ human_all_atac$species<-"human"
 mouse_select_atac$species<-"mouse"
 species<-rbind(human_all_atac[["species"]],mouse_select_atac[["species"]])
 
-bins_select<-list.files("/home/torkenczyk/H_M_chromatin_atlas/human_data/bins_lsi_selected/")
-file_names<-paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/bins_lsi_selected/",bins_select)
+bins_select<-list.files("/brahms/torkenczyk/H_M_storage/analysis/objects//bins_lsi_selected/")
+file_names<-paste0("/brahms/torkenczyk/H_M_storage/analysis/objects//bins_lsi_selected/",bins_select)
 bins<-gsub(x=bins_select,replacement = "",pattern = "LSI_informed.bins.")
 bins<-gsub(x=bins,replacement = "",pattern = ".txt")
 
-j=0
-for (i in bins){
-print(i)
-peaks.use.str<-read.table(file=file_names[1])[,1]
+bins<-bins[c(2,7,10,12,13,14,1,3,4,5,6,8,9,11)]
+file_names<-file_names[c(2,7,10,12,13,14,1,3,4,5,6,8,9,11)]
 
+integrated_H_M<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects//Final_integration_all_bins_CCA.rds")
+all_meta<-integrated_H_M[[]]
+remove(integrated_H_M)
+gc()
+
+j=0
+dimplotlist<-list()
+
+
+
+
+#run from here!!!!!!!!!
+for (i in c(14,5,8,14)){
+ptm <- proc.time()
+print(bins[i])
+peaks.use.str<-read.table(file=file_names[i])[,1]
 peaks.use<-StringToGRanges(peaks.use.str,sep = c("-","-"))
 
 #create a new Seurat object
@@ -379,14 +1236,15 @@ integrated_H_M_cre <- RunUMAP(
   reduction = 'integrated_dr'
 )
 
+#integrated_H_M_cre<-AddMetaData(integrated_H_M_cre,all_meta)
+#ps<-DimPlot(integrated_H_M_cre,group.by = "celltype",split.by = "species",label=T)+ NoLegend()+ggtitle(bins[i])
+#pc<-DimPlot(integrated_H_M_cre,group.by = "celltype",label=T)
 
-DimPlot(integrated_H_M_cre,group.by = "celltype",split.by = "species")
+#dimplotlist[[bins[i]]]<-ps
+saveRDS(integrated_H_M_cre,file = paste0("/brahms/torkenczyk/H_M_storage/analysis/objects//H_M_int_",bins[i],"_bins.rds"))
+print(proc.time() - ptm)
+}
 
-all_meta<-integrated_H_M[[]]
-integrated_H_M_cre<-AddMetaData(integrated_H_M_cre,all_meta)
-
-DimPlot(integrated_H_M_cre,group.by = "celltype",label=T)
-saveRDS(integrated_H_M_cre,file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/H_M_int_100k_bins.rds")
 integrated_H_M<-integrated_H_M_cre
 
 integrated_H_M_narem<-subset(integrated_H_M, subset = celltype != "Unknown")
@@ -397,12 +1255,10 @@ names(Celltype_dictionary_top)<-row.names(integrated_H_M_narem_f[[]])
 
 
 top_n_res<-top_n_neighbors(integrated_H_M_narem_f)
-top_n_res$annot<-"100k_bins"
-write.table(top_n_res,"/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_100k.txt",quote = F,sep = "\t",row.names = T,col.names = T)
+top_n_res$annot<-bins[i]
+write.table(top_n_res,paste0("/brahms/torkenczyk/H_M_storage/analysis/objects//All_bins_human_mouse_frac_matched_",bins[i],".txt"),quote = F,sep = "\t",row.names = T,col.names = T)
 
-
-
-top_n_res_all<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched.txt",sep = "\t")
+top_n_res_all<-read.table("/brahms/torkenczyk/H_M_storage/analysis/objects//All_bins_human_mouse_frac_matched.txt",sep = "\t")
 top_n_res_all$annot<-"all_bins"
 
 top_n_comp<-rbind(top_n_res,top_n_res_all)
@@ -413,25 +1269,20 @@ a<-merge(top_n_res_all,top_n_res,by="row.names")
 
 a$diff=a$percent_matched.y-a$percent_matched.x
 
-
-ggplot(top_n_comp,aes(x=species,fill=annot,y=percent_matched))+geom_boxplot()
-
-ggplot(a,aes(x=species.x,y=diff))+geom_violin()
-
-write.table(a,"/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_250k_all_merged.txt",quote = F,sep = "\t",row.names = T,col.names = T)
+write.table(a,paste0("/brahms/torkenczyk/H_M_storage/analysis/objects//All_bins_human_mouse_frac_matched_",bins[i],"_all_merged.txt"),quote = F,sep = "\t",row.names = T,col.names = T)
 
 
-
+print(proc.time() - ptm)
 }
 
 
 #compare all
 
 
-bins100k<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_100k.txt",sep = "\t",)
-bins10k<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_10k.txt",sep = "\t")
-bins250k<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched_250k.txt",sep = "\t")
-binsall<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/All_bins_human_mouse_frac_matched.txt",sep = "\t")
+bins100k<-read.table("/brahms/torkenczyk/H_M_storage/analysis/objects//All_bins_human_mouse_frac_matched_100k.txt",sep = "\t",)
+bins10k<-read.table("/brahms/torkenczyk/H_M_storage/analysis/objects//All_bins_human_mouse_frac_matched_10k.txt",sep = "\t")
+bins250k<-read.table("/brahms/torkenczyk/H_M_storage/analysis/objects//All_bins_human_mouse_frac_matched_250k.txt",sep = "\t")
+binsall<-read.table("/brahms/torkenczyk/H_M_storage/analysis/objects//All_bins_human_mouse_frac_matched.txt",sep = "\t")
 
 
 
@@ -446,6 +1297,95 @@ p<-ggplot(compall,aes(x=annot,fill=species,y=comp))+geom_violin()+theme_classic(
 sd(comp10k$comp)
 
 
+
+```
+```{r}
+#dependencies
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(EnsDb.Mmusculus.v79)
+library(EnsDb.Mmusculus.v75)
+library(ggplot2)
+library(patchwork)
+library(Signac)
+library(tidyr)
+library(Seurat)
+library(devtools)
+load_all("~/devel/seurat-private-feat-incrementalPCA/")
+load_all("~/devel/signac-private-master/")
+require(spam)
+require(spam64)
+library(reshape2)
+library(dplyr)
+
+
+#just integrating on gene activites
+
+human<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects//Select_human_tissues.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects//Select_mouse_tissues.rds")
+
+integrated_H_M<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects//Final_integration_all_bins_CCA.rds")
+all_meta<-integrated_H_M[[]]
+remove(integrated_H_M)
+gc()
+
+
+
+h_GA<-GeneActivity(human)
+m_GA<-GeneActivity(mouse)
+
+row.names(m_GA)<-toupper(row.names(m_GA))
+
+m_GA<-m_GA[!duplicated(row.names(m_GA)),]
+
+human[["ACTIVITY"]] <- CreateAssayObject(counts = h_GA)
+mouse[["ACTIVITY"]] <- CreateAssayObject(counts = m_GA)
+
+DefaultAssay(human) <- "ACTIVITY"
+DefaultAssay(mouse) <- "ACTIVITY"
+
+human[["cre"]]<-NULL
+human[["Deviation_DA_mouse"]]<-NULL
+human[["Deviation_DA_human"]]<-NULL
+human[["Deviation_DA_int"]]<-NULL
+human[["chromvar"]]<-NULL
+human[["RNA"]]<-NULL
+
+mouse[["cre"]]<-NULL
+mouse[["cre99"]]<-NULL
+mouse[["cre05"]]<-NULL
+mouse[["Deviation_DA_mouse"]]<-NULL
+mouse[["Deviation_DA_human"]]<-NULL
+mouse[["Deviation_DA_int"]]<-NULL
+mouse[["chromvar"]]<-NULL
+mouse[["RNAmm10"]]<-NULL
+mouse[["mm10"]]<-NULL
+mouse[["mm9"]]<-NULL
+
+mouse <- NormalizeData(mouse)
+mouse <- ScaleData(mouse, features = rownames(mouse))
+mouse <- FindVariableFeatures(mouse, selection.method = "vst", nfeatures = 2000)
+human <- NormalizeData(human)
+human <- ScaleData(human, features = rownames(human))
+human <- FindVariableFeatures(human, selection.method = "vst", nfeatures = 2000)
+
+
+# select features that are repeatedly variable across datasets for integration
+#features <- SelectIntegrationFeatures(object.list = list(human,mouse))
+#remove.duplicates
+#features<-features[c(-1441,-1981,-476)]
+features<-intersect(row.names(human),row.names(mouse))
+
+
+anchors_H_M <- FindIntegrationAnchors( object.list=list(human, mouse),anchor.features = features,scale=F,sparse=TRUE,spam=TRUE,reference.assay = "ACTIVITY", query.assay = "ACTIVITY",reduction = "cca",
+                                       assay = c('humanPeaksamp', 'humanPeaksamp'),
+                                       k.filter = NA
+)
+
+
+H_M_GA_comb <- IntegrateData(anchorset = transfer.anchors,normalization.method = "LogNormalize",features = features)
+saveRDS(H_M_GA_comb,file = paste0("/brahms/torkenczyk/H_M_storage/analysis/objects/H_M_int_GeneA.rds"))
 
 ```
 

@@ -1,0 +1,149 @@
+---
+title: "Comparing metrics of integration"
+output: html_document
+date: '2022-12-19'
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(Signac)
+```
+
+Do a comparison between running only CREs and bins. 
+
+functions
+```{r}
+silh_ser<-function(dataset,reduction="integrated_dr",dims=1:dims){
+library(cluster, quietly = TRUE)
+dist.matrix <- dist(x = Embeddings(object = dataset[[reduction]])[, dims])
+clusters <- dataset$celltype
+sil <- silhouette(x = as.numeric(x = as.factor(x = clusters)), dist = dist.matrix)
+dataset$sil <- sil[, 3]
+return(dataset)
+}
+
+```
+
+
+
+
+```{r cars}
+library(dplyr)
+bins_rds<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Final_integration_all_bins_CCA_remove_removed.rds")
+cre_rds<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/H_M_cre.rds")
+
+p_cre<-DimPlot(cre_rds,group.by = "celltype",split.by = "species",label = T)+NoLegend()+ggtitle("CRE all")
+p_bins<-DimPlot(bins_rds,group.by = "celltype",split.by = "species",label = T)+NoLegend()+ggtitle("bins all")
+
+DimPlot(gene_rds)
+DimPlot(cre_rds)
+
+#mixing metric between the species
+
+bin_mm<-MixingMetric(object = bins_rds,reduction ="integrated_dr",grouping.var = "species")
+cre_mm<-MixingMetric(object = cre_rds,reduction ="integrated_dr",grouping.var = "species")
+
+
+mm_all_df<-data.frame(bin=bin_mm,cre=cre_mm)
+
+ #LocalStruct for handannot
+
+bin_ll<-LocalStruct(object = bins_rds,reduction ="integrated_dr",grouping.var = "handannot")
+cre_ll<-LocalStruct(object = cre_rds,reduction ="integrated_dr",grouping.var = "handannot")
+
+ls_df<-data.frame(bin=median(sapply(bin_ll2,mean)),cre=median(sapply(cre_ll2,mean)))
+
+mean(bin_mm)
+mean(cre_mm)
+
+#these take too long
+bins_rds<-silh_ser(dataset = bins_rds,dims = 20)
+cre_rds<-silh_ser(dataset = cre_rds,dims = 20)
+gene_rds<-silh_ser(dataset = gene_rds,dims = 20)
+
+#bins comparisons
+
+bins<-list.files("/brahms/torkenczyk/H_M_storage/analysis/methods_comparisons/")
+bins
+metadata<-bins_rds[[]]
+bin_lst<-list()
+bin_mms<-list()
+for (i in bins[c(7:18)]){
+print(i)
+bins_rds<-readRDS(paste0("/brahms/torkenczyk/H_M_storage/analysis/methods_comparisons/",i))
+bins_rds<-AddMetaData(object = bins_rds,metadata = metadata)
+cells<-bins_rds[["species"]]
+cells<-row.names(cells)[!is.na(cells$species)]
+bins_rds<-subset(bins_rds,cells=cells)
+bin_mm2<-MixingMetric(object = bins_rds,reduction ="integrated_dr",grouping.var = "species")
+bin_ll2<-LocalStruct(object = bins_rds,reduction ="integrated_dr",grouping.var = "handannot")
+
+bin_lst[[i]]<-median(sapply(bin_ll2,mean))
+
+bin_mms[[i]]<-mean(bin_mm2)
+
+}
+
+bin_lst_hum[["all_bins"]]<-ls_human_df$bin
+bin_lst_mus[["all_bins"]]<-ls_mouse_df$bin
+bin_mms[["all_bins"]]<-mm_all_df$bin
+
+
+
+saveRDS(bin_lst_hum,file = "/brahms/torkenczyk/H_M_storage/analysis/methods_comparisons/Bin_number_comparisons_local_struct_hum.rds")
+saveRDS(bin_lst_mus,file = "/brahms/torkenczyk/H_M_storage/analysis/methods_comparisons/Bin_number_comparisons_local_struct_mouse.rds")
+saveRDS(bin_mms,file = "/brahms/torkenczyk/H_M_storage/analysis/methods_comparisons/Bin_number_comparisons_mixing_met_mouse.rds")
+
+bin_all_human_lst_df<-bind_rows(bin_lst_hum, .id = "column_label")
+bin_all_mouse_lst_df<-bind_rows(bin_lst_mus, .id = "column_label")
+bin_all_mms_df<-bind_rows(bin_mms, .id = "column_label")
+bin_all_human_lst_df<-colMeans(bin_all_human_lst_df)
+bin_all_human_lst_df<-melt(bin_all_human_lst_df)
+bin_all_mouse_lst_df<-colMeans(bin_all_mouse_lst_df)
+bin_all_mouse_lst_df<-melt(bin_all_mouse_lst_df)
+
+bin_all_mms_df<-colMeans(bin_all_mms_df)
+bin_all_mms_df<-melt(bin_all_mms_df)
+
+
+
+#bin_all_human_lst_df$bins_size<-gsub(pattern ="_bins.rds", x=gsub(x=bin_all_human_lst_df$variable,pattern = "H_M_int_",replacement = ""),replacement = "")
+bin_all_human_lst_df$bins_size<-gsub(pattern ="_bins.rds", x=gsub(x=row.names(bin_all_human_lst_df),pattern = "H_M_int_",replacement = ""),replacement = "")
+
+#bin_all_mouse_lst_df$bins_size<-gsub(pattern ="_bins.rds", x=gsub(x=bin_all_mouse_lst_df$variable,pattern = "H_M_int_",replacement = ""),replacement = "")
+bin_all_mouse_lst_df$bins_size<-gsub(pattern ="_bins.rds", x=gsub(x=row.names(bin_all_mouse_lst_df),pattern = "H_M_int_",replacement = ""),replacement = "")
+
+#bin_all_mms_df$bins_size<-gsub(pattern ="_bins.rds", x=gsub(x=bin_all_mms_df$variable,pattern = "H_M_int_",replacement = ""),replacement = "")
+bin_all_mms_df$bins_size<-gsub(pattern ="_bins.rds", x=gsub(x=row.names(bin_all_mms_df),pattern = "H_M_int_",replacement = ""),replacement = "")
+
+
+bin_all_human_lst_df$species<-"human"
+bin_all_mouse_lst_df$species<-"mouse"
+
+bin_all_human_lst_df$method<-"local structure"
+bin_all_mouse_lst_df$method<-"local structure"
+bin_all_mms_df$method<-"mixing metric"
+bin_all_mms_df_mouse<-bin_all_mms_df
+bin_all_mms_df_human<-bin_all_mms_df
+
+
+bin_all_mms_df_mouse$species<-"mouse"
+bin_all_mms_df_human$species<-"mouse"
+
+
+bin_comparison_all<-rbind(bin_all_human_lst_df,bin_all_mouse_lst_df)
+bin_comparison_all$bins_size<-as.factor(bin_comparison_all$bins_size)
+
+levels(bin_comparison_all$bins_size)<-c("10k","20k","30k","40k","50k","75k","100k","125k","150k","200k","250k","350k","all_bins")
+bin_all_mms_df$bins_size<-as.factor(bin_all_mms_df$bins_size)
+levels(bin_all_mms_df$bins_size)<-c("10k","20k","30k","40k","50k","75k","100k","125k","150k","200k","250k","350k","all_bins")
+
+p1<-ggplot(bin_comparison_all,mapping = aes(x=bins_size,y=value,method=species,color=species))+geom_point()+theme_classic()+ylab("local structure")
+p2<-ggplot(bin_all_mms_df,mapping = aes(x=bins_size,y=value))+geom_point()+theme_classic()+ylab("mixing metric")
+p_comb<-wrap_plots(list(p1,p2),ncol = 1,nrow = 2)
+p_comb
+
+
+
+```
+

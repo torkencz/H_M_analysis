@@ -12,19 +12,19 @@ output: html_document
 #lung and pneumocytes
 human_all_atac
 
-all_cre_hg19<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/ALL.bg.hg19.bed",header = F)
+all_cre_hg19<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/ALL.bg.hg19.bed",header = F)
 all_cre_hg19<-paste(all_cre_hg19$V1,all_cre_hg19$V2,all_cre_hg19$V3,sep = "-")
 all_cre_hg19_gr<-reduce(StringToGRanges(all_cre_hg19,sep = c("-","-")))
-meta_fetal<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
+meta_fetal<-read.delim("/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
 meta_fetal_lung<-meta_fetal[which(meta_fetal$tissue=="lung"),]
-fragment1<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_4_lung.fragments.txt.gz"
-fragment2<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_8_lung.fragments.txt.gz"
-fragment3<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_33_lung.fragments.txt.gz"
-fragment4<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_38_lung.fragments.txt.gz"
-fragment5<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_44_lung.fragments.txt.gz"
-fragment6<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_47_lung.fragments.txt.gz"
-fragment7<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_68_lung.fragments.txt.gz"
-fragment8<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_70_lung.fragments.txt.gz"
+fragment1<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_4_lung.fragments.txt.gz"
+fragment2<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_8_lung.fragments.txt.gz"
+fragment3<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_33_lung.fragments.txt.gz"
+fragment4<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_38_lung.fragments.txt.gz"
+fragment5<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_44_lung.fragments.txt.gz"
+fragment6<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_47_lung.fragments.txt.gz"
+fragment7<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_68_lung.fragments.txt.gz"
+fragment8<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_70_lung.fragments.txt.gz"
 
 fragments1 <- CreateFragmentObject(
   path = fragment1,cells = meta_fetal_lung[meta_fetal_lung$donor_id=="H26547" & meta_fetal_lung$batch=="batch_1",]$cell
@@ -95,9 +95,9 @@ library(motifmatchr)
 library(Matrix)
 library(SummarizedExperiment)
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Pneumocytes.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Pneumocytes.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed",header = F)
 
 M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
 H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
@@ -144,6 +144,33 @@ p2_shared<-VlnPlot(fetal_lung, features = "int",idents =c("Bronchiolar and alveo
 
 p2_mouse|p2_human|p2_shared
 
+p2_mouse<-VlnPlot(fetal_lung, features = "mouse",pt.size = 0)+geom_boxplot()
+
+p2_human<-VlnPlot(fetal_lung, features = "human",idents =c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"),group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_shared<-VlnPlot(fetal_lung, features = "int",idents =c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"),group.by = "day_of_pregnancy",pt.size = 0)+geom_boxplot()
+
+p2_mouse|p2_human|p2_shared
+
+
+
+M<-as.data.frame(t(GetAssayData(fetal_lung,assay = "Deviation_PN",slot = "data")))
+M$celltype<-as.factor(fetal_lung[["cell_type"]]$cell_type)
+
+library(reshape2)
+M<-melt(M, id.vars=c("celltype"))
+M$variable<-factor(x = M$variable, levels = c("int","mouse","human"))
+
+M$celltype<-factor(x = M$celltype, levels = levels(M$celltype))
+
+plung_dev<-ggplot(M,aes(x=celltype,fill=variable,y=value))+geom_boxplot()+theme_classic()+ylab("Deviation of accessibility")+xlab("")+theme(legend.position = "none")
+
+
+
+
+
+
+
 
 Idents(fetal_lung)<-fetal_lung$day_of_pregnancy
 p2b<-RidgePlot(fetal_lung, features = row.names(fetal_lung), ncol = 3)
@@ -151,7 +178,7 @@ p2b<-RidgePlot(fetal_lung, features = row.names(fetal_lung), ncol = 3)
 FeaturePlot(fetal_lung,features = c("human"),label = T)
 
 
-saveRDS(fetal_lung,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Fetal_pn.rds")
+saveRDS(fetal_lung,"/brahms/torkenczyk/H_M_storage/analysis/active_use_objects/Fetal_pn.rds")
 
 
 Idents(fetal_lung)<-fetal_lung$cell_type
@@ -459,9 +486,9 @@ ggplot(pclust,aes(x=time,fill=as.factor(cluster)))+geom_histogram()+theme_classi
 
 groups<-as.factor(pclust$cluster)
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Pneumocytes.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Pneumocytes.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed",header = F)
 
 M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
 H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
@@ -620,15 +647,15 @@ dev.off()
 Fetal_heart analysis
 ```{r}
 #heart and cardiomyocytes
-all_cre_hg19<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/ALL.bg.hg19.bed",header = F)
+all_cre_hg19<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/ALL.bg.hg19.bed",header = F)
 all_cre_hg19<-paste(all_cre_hg19$V1,all_cre_hg19$V2,all_cre_hg19$V3,sep = "-")
 all_cre_hg19_gr<-reduce(StringToGRanges(all_cre_hg19,sep = c("-","-")))
-meta_fetal<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
+meta_fetal<-read.delim("/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
 meta_fetal_heart<-meta_fetal[which(meta_fetal$tissue=="heart"),]
-fragment1<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_12_heart.fragments.txt.gz"
-fragment2<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_14_heart.fragments.txt.gz"
-fragment3<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_32_heart.fragments.txt.gz"
-fragment4<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_39_heart.fragments.txt.gz"
+fragment1<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_12_heart.fragments.txt.gz"
+fragment2<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_14_heart.fragments.txt.gz"
+fragment3<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_32_heart.fragments.txt.gz"
+fragment4<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_39_heart.fragments.txt.gz"
 
 
 fragments1 <- CreateFragmentObject(
@@ -684,9 +711,9 @@ DimPlot(fetal_heart,group.by ="cell_type",label = T)
 DimPlot(fetal_heart,group.by ="day_of_pregnancy",label = T)
 
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Cardiomyocytes.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Cardiomyocytes.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Cardiomyocytes.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Cardiomyocytes.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Cardiomyocytes.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Cardiomyocytes.hg19.bed",header = F)
 
 M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
 H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
@@ -738,6 +765,28 @@ p2_shared<-VlnPlot(fetal_heart, features = "int",idents =c("Bronchiolar and alve
 
 p2_mouse+p2_human+p2_shared
 saveRDS(fetal_heart,file="Fetal_heart_analysis.rds")
+fetal_heart<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/Fetal_heart_analysis.rds")
+
+M<-as.data.frame(t(GetAssayData(fetal_heart,assay = "Deviation_PN",slot = "data")))
+M$celltype<-as.factor(fetal_heart[["cell_type"]]$cell_type)
+
+library(reshape2)
+M<-melt(M, id.vars=c("celltype"))
+M$variable<-factor(x = M$variable, levels = c("int","mouse","human"))
+
+M$celltype<-factor(x = M$celltype, levels = levels(M$celltype))
+
+pheart_dev<-ggplot(M,aes(x=celltype,fill=variable,y=value))+geom_boxplot()+theme_classic()+ylab("Deviation of accessibility")+xlab("")
+
+
+
+
+
+
+
+
+
+
 
 #fetal_heart_card<-subset(fetal_heart,ident=c("Bronchiolar and alveolar epithelial cells","Ciliated epithelial cells"))
 fetal_heart_card<-subset(fetal_heart,ident=c("Cardiomyocytes","Cardiomyocytes/Vascular endothelial cells"))
@@ -923,17 +972,17 @@ Fetal liver analysis
 ```{r}
 # hepatocytes
 
-meta_fetal<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
+meta_fetal<-read.delim("/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
 meta_fetal_liver<-meta_fetal[which(meta_fetal$tissue=="liver"),]
 
 
-fragment1<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_7_liver.fragments.txt.gz"
-fragment2<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_9_liver.fragments.txt.gz"
-fragment3<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_35_liver.fragments.txt.gz"
-fragment4<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_37_liver.fragments.txt.gz"
-fragment5<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_40_liver.fragments.txt.gz"
-fragment6<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_43_liver.fragments.txt.gz"
-fragment7<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_46_liver.fragments.txt.gz"
+fragment1<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_7_liver.fragments.txt.gz"
+fragment2<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_9_liver.fragments.txt.gz"
+fragment3<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_35_liver.fragments.txt.gz"
+fragment4<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_37_liver.fragments.txt.gz"
+fragment5<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_40_liver.fragments.txt.gz"
+fragment6<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_43_liver.fragments.txt.gz"
+fragment7<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_46_liver.fragments.txt.gz"
 
 
 fragments1 <- CreateFragmentObject(path = fragment1,cells = meta_fetal_liver[meta_fetal_liver$donor_id=="H27058" & meta_fetal_liver$batch=="batch_1",]$cell,validate.fragments = T)
@@ -984,9 +1033,9 @@ saveRDS(fetal_liver,file="Fetal_liver_analysis.rds")
 
 
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Hepatocytes.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Hepatocytes.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Hepatocytes.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Hepatocytes.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Hepatocytes.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Hepatocytes.hg19.bed",header = F)
 
 M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
 H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
@@ -999,16 +1048,16 @@ HO_Ol<-row.names(fetal_liver)[unique(subjectHits(findOverlaps(H_granges,subject 
 I_Ol<-row.names(fetal_liver)[unique(subjectHits(findOverlaps(I_granges,subject = Mat_granges)))]
 
 have_reads_m<-fetal_liver[["peaks"]][[]][fetal_liver[["peaks"]][[]]$count>0,]
+rowRanges<-StringToGRanges(row.names(have_reads_m))
 have_reads_m<-have_reads_m[-which(seqnames(rowRanges) == "chr17")[1],]
-
-
+have_reads_m<-fetal_liver[["peaks"]][[]][fetal_liver[["peaks"]][[]]$count>0,]
 matched_m<-row.names(have_reads_m) %in% MO_Ol
 matched_h<-row.names(have_reads_m) %in% HO_Ol
 matched_i <- row.names(have_reads_m) %in% I_Ol
 
 m_matched_df<- data.frame(mouse=matched_m,human=matched_h,int=matched_i)
 
-rowRanges<-StringToGRanges(row.names(have_reads_m))
+
 anno_m <- getAnnotations(annotations = m_matched_df, rowRanges = rowRanges)
 
 fragments_m <- SummarizedExperiment(assays = list(counts = GetAssayData(fetal_liver, assay = "peaks", slot = "counts")[row.names(have_reads_m),]), rowRanges = rowRanges)
@@ -1040,6 +1089,17 @@ p2_shared<-VlnPlot(fetal_liver, features = "int",idents = "Hepatoblasts",group.b
 p2_mouse+p2_human+p2_shared
 saveRDS(fetal_liver,file="fetal_liver_analysis.rds")
 
+fetal_liver<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/Fetal_liver_analysis.rds")
+M<-as.data.frame(t(GetAssayData(fetal_liver,assay = "Deviation_PN",slot = "data")))
+M$celltype<-as.factor(fetal_liver[["cell_type"]]$cell_type)
+
+library(reshape2)
+M<-melt(M, id.vars=c("celltype"))
+M$variable<-factor(x = M$variable, levels = c("int","mouse","human"))
+
+M$celltype<-factor(x = M$celltype, levels = levels(M$celltype))
+
+pliv_dev<-ggplot(M,aes(x=celltype,fill=variable,y=value))+geom_boxplot()+theme_classic()+ylab("Deviation of accessibility")+xlab("")
 
 
 
@@ -1219,13 +1279,13 @@ saveRDS(fetal_liver_hep,file="fetal_liver_analysis_hep.rds")
 Fetal intestine analysis
 ```{r}
 #intestine
-meta_fetal<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
+meta_fetal<-read.delim("/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/filtered.cell_metadata.for_website.txt.gz")
 meta_fetal_intestine<-meta_fetal[which(meta_fetal$tissue=="intestine"),]
 
 
-fragment1<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_19_intestine.fragments.txt.gz"
-fragment2<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_21_intestine.fragments.txt.gz"
-fragment3<-"/home/torkenczyk/H_M_chromatin_atlas/human_data/human_fetal_data/sample_28_intestine.fragments.txt.gz"
+fragment1<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_19_intestine.fragments.txt.gz"
+fragment2<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_21_intestine.fragments.txt.gz"
+fragment3<-"/brahms/torkenczyk/H_M_storage/analysis/human_fetal_data/sample_28_intestine.fragments.txt.gz"
 
 
 fragments1 <- CreateFragmentObject(path = fragment1,cells = meta_fetal_intestine[meta_fetal_intestine$donor_id=="H27472" & meta_fetal_intestine$batch=="batch_1",]$cell,validate.fragments = T)
@@ -1276,9 +1336,9 @@ DimPlot(fetal_intestine,group.by = "cell_type",pt.size = 1,label = T)+DimPlot(fe
 
 
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Goblet_cells.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Goblet_cells.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Goblet_cells.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Goblet_cells.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Goblet_cells.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Goblet_cells.hg19.bed",header = F)
 
 M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
 H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
@@ -1326,9 +1386,9 @@ RidgePlot(fetal_intestine,features = c("human","mouse","int"))
 #Enterocytes
 DefaultAssay(fetal_intestine)<-"peaks"
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Enterocytes.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Enterocytes.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Enterocytes.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Enterocytes.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Enterocytes.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Enterocytes.hg19.bed",header = F)
 
 M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
 H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
@@ -1377,9 +1437,9 @@ RidgePlot(fetal_intestine,features = c("human","mouse","int"))
 #schwann cells
 DefaultAssay(fetal_intestine)<-"peaks"
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Schwann_cells.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Schwann_cells.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Schwann_cells.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Schwann_cells.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Schwann_cells.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Schwann_cells.hg19.bed",header = F)
 
 M_granges<-unique(sort(StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))))
 H_granges<-unique(sort(StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))))
@@ -1433,16 +1493,16 @@ saveRDS(fetal_intestine,file="Fetal_intestine_analysis.rds")
 #entero and goblet cells
 
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Goblet_cells.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Goblet_cells.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Goblet_cells.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Goblet_cells.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Goblet_cells.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Goblet_cells.hg19.bed",header = F)
 
 
 #OR
 
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Enterocytes.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Enterocytes.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Enterocytes.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Enterocytes.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Enterocytes.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Enterocytes.hg19.bed",header = F)
 
 DefaultAssay(fetal_intestine)<-"peaks"
 fetal_intestine_entgob<-subset(fetal_intestine,ident=c("Chromaffin cells","Intestinal epithelial cells","Intestine_Unknown.8"))
@@ -1617,9 +1677,9 @@ dev.off()
 saveRDS(fetal_intestine_entgob,file="fetal_intestine_analysis_entgob.rds")
 
 #Schwann cells
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Schwann_cells.hg19.bed",header = F)
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Schwann_cells.hg19.bed",header = F)
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Schwann_cells.hg19.bed",header = F)
+S<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Shared2celline.Schwann_cells.hg19.bed",header = F)
+HO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.h.Schwann_cells.hg19.bed",header = F)
+MO<-read.table("/brahms/torkenczyk/H_M_storage/analysis/celltype_bedfiles/Uniq2celline.m.Schwann_cells.hg19.bed",header = F)
 
 DefaultAssay(fetal_intestine)<-"peaks"
 fetal_intestine_sch<-subset(fetal_intestine,ident=c("ENS glia"))
@@ -1793,10 +1853,4 @@ dev.off()
 
 
 ```
-
-Of sites that are accessible of original sites can we learn motifs that are only present there
-```{r}
-
-```
-
 

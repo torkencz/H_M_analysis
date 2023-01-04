@@ -72,8 +72,39 @@ return(chromvar.hz)
 
 }
 
+human_all_atac$species="human"
+mouse_select_atac$species="mouse"
 
+norm_human_matrices_sh<-list()
+norm_mouse_matrices_sh<-list()
+norm_human_matrices_hum<-list()
+norm_mouse_matrices_hum<-list()
+norm_human_matrices_mouse<-list()
+norm_mouse_matrices_mouse<-list()
 
+for (i in names(shared_10_DA)) {   
+norm_human_matrices_sh[[i]]<-corrected_reads_peaks(object = human_all_atac,peaks = shared_10_DA[[i]],group_name = "celltype_final",species = "human",assay = "cre")
+norm_human_matrices_hum[[i]]<-corrected_reads_peaks(object = human_all_atac,peaks = human_10_DA[[i]],group_name = "celltype_final",species = "human",assay = "cre")
+norm_human_matrices_mouse[[i]]<-corrected_reads_peaks(object = human_all_atac,peaks = mouse_10_DA[[i]],group_name = "celltype_final",species = "human",assay = "cre")
+
+norm_mouse_matrices_sh[[i]]<-corrected_reads_peaks(object = mouse_select_atac,peaks = shared_10_DA[[i]],group_name = "celltype_final",species = "mouse",assay = "cre")
+norm_mouse_matrices_hum[[i]]<-corrected_reads_peaks(object = mouse_select_atac,peaks = human_10_DA[[i]],group_name = "celltype_final",species = "mouse",assay = "cre")
+norm_mouse_matrices_mouse[[i]]<-corrected_reads_peaks(object = mouse_select_atac,peaks = mouse_10_DA[[i]],group_name = "celltype_final",species = "mouse",assay = "cre")
+
+}
+
+log_norm_all_matrices<-list()
+
+for (i in names(shared_10_DA)) { 
+log_norm_all_matrices[[i]]$shared_peaks$human_data=-log(norm_human_matrices_sh[[i]]$human+0.0000000001)
+log_norm_all_matrices[[i]]$shared_peaks$mouse_data=-log(norm_mouse_matrices_sh[[i]]$mouse+0.0000000001)
+log_norm_all_matrices[[i]]$human_only_peaks$human_data=-log(norm_human_matrices_hum[[i]]$human+0.0000000001)
+log_norm_all_matrices[[i]]$human_only_peaks$mouse_data=-log(norm_mouse_matrices_hum[[i]]$mouse+0.0000000001)
+log_norm_all_matrices[[i]]$mouse_only_peaks$human_data=-log(norm_human_matrices_mouse[[i]]$human+0.0000000001)
+log_norm_all_matrices[[i]]$mouse_only_peaks$mouse_data=-log(norm_mouse_matrices_mouse[[i]]$mouse+0.0000000001) 
+}
+
+saveRDS(log_norm_all_matrices,"/home/torkenczyk/H_M_chromatin_atlas/human_data/log.norm_top_10k.celltype.acc.rds")
 
 ```
 
@@ -82,8 +113,8 @@ PER tissue distance analyses
 ```{r}
 #analysis of per tissue discance
 
-human_all_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
-mouse_select_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+human_all_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_human_tissues.rds")
+mouse_select_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_mouse_tissues.rds")
 
 
 
@@ -677,8 +708,8 @@ hd_m+hd_h
 ```{r}
 #distance calculation based on R suggestion. Here we calculate the per site correlation
 
-human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
-mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+human<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_human_tissues.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_mouse_tissues.rds")
 
 DefaultAssay(human)<-"cre"
 DefaultAssay(mouse)<-"cre"
@@ -880,7 +911,7 @@ dev.off()
 
 #highlight hm avg dist based on da sites
  
-muse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/All_da_continous_info.rds") 
+muse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/for_rahul/All_da_continous_info.rds") 
 hm_avg_dist$peak<-row.names(hm_avg_dist)
 B_dist<-merge(x=hm_avg_dist,y=muse$`B-lymphocytes`,by.x="peak",by.y="feature_hg38_universal")
 T_dist<-merge(x=hm_avg_dist,y=muse$`T-lymphocytes`,by.x="peak",by.y="feature_hg38_universal")
@@ -972,9 +1003,9 @@ have_reads_h<-human_all_atac[["cre"]][[]][human_all_atac[["cre"]][[]]$count>0,]
 have_reads_m<-mouse_select_atac[["cre"]][[]][mouse_select_atac[["cre"]][[]]$count>0,]
 
 all_peaks<-intersect(row.names(have_reads_h),row.names(have_reads_m))
-load("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/Shared.bw.species.DA.RData")
-load("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/Human_only.bw.species.DA.RData")
-load("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/Mouse_only.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/for_rahul/Shared.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/for_rahul/Human_only.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/for_rahul/Mouse_only.bw.species.DA.RData")
 
 library(dplyr)
 sh_sites<-bind_rows(shared_DA, .id = "column_label")
@@ -1104,9 +1135,9 @@ dev.off()
 
 
 
-mouse_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Mouse_sites_10k.rds")
-human_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Human_sites_10k.rds")
-shared_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Shared_sites_10k.rds")
+mouse_10_DA<-readRDS(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/Mouse_sites_10k.rds")
+human_10_DA<-readRDS(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/Human_sites_10k.rds")
+shared_10_DA<-readRDS(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/Shared_sites_10k.rds")
 
 #IRF4 also has a mouse example
 BCm<-ClosestFeature(regions =  mouse_10_DA$`B-lymphocytes`,object = human_all_atac)
@@ -1218,15 +1249,15 @@ all_output<-wrap_plots(Top,bottom,ncol = 1,nrow = 2)
 MF<-ClosestFeature(regions = shared_DA$Myofibroblasts$feature_hg38_universal,object = human_all_atac)
 MF<-MF[MF$gene_name %in% c("ACTA2"),]
 
-pmy<-CoveragePlot(human_all_atac,region = "ACTA2",region.highlight = MF$query_region,annotation = F,peaks = F)
+pmy<-CoveragePlot(human_all_atac,region = "ACTA2",region.highlight = StringToGRanges(MF$query_region),annotation = F,peaks = F)
 pmy2<-CoveragePlot(m_unkown,region = "ACTA2",region.highlight = StringToGRanges(MF$query_region))
 
 
 wrap_plots(list(pmy,pmy2),nrow = 2)
 
+DimPlot(integrated_H_M,cells.highlight = row.names(integrated_H_M[[]])[integrated_H_M$celltype=="Unknown"],pt.size = 0.2,raster = F)
 
-
-
+DimPlot(integrated_H_M,cells.highlight = row.names(integrated_H_M[[]])[integrated_H_M$celltype=="Unknown"],pt.size = 0.1,raster = T)
 
 row.names(hm)<-hm$Row.names
 hm$Row.names<-NULL
@@ -1282,7 +1313,7 @@ H<-Heatmap(na.omit(hm_sub[ordered,sort(colnames(hm_sub))]),cluster_columns = F,c
 
 
 # see if muse works better
-muse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/All_da_continous_info.rds") 
+muse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/for_rahul/All_da_continous_info.rds") 
 top_num_peaks=10000
 list10k_sh<-list()
 list10k_mouse<-list()
@@ -1306,9 +1337,9 @@ list10k_human[[ct]]<-mu$feature_hg38_universal[mu$category10k=="human"]
 
 }
 
-saveRDS(list10k_sh,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Shared_sites_10k.rds")
-saveRDS(list10k_mouse,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Mouse_sites_10k.rds")
-saveRDS(list10k_human,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Human_sites_10k.rds")
+saveRDS(list10k_sh,"/brahms/torkenczyk/H_M_storage/analysis/objects/Shared_sites_10k.rds")
+saveRDS(list10k_mouse,"/brahms/torkenczyk/H_M_storage/analysis/objects/Mouse_sites_10k.rds")
+saveRDS(list10k_human,"/brahms/torkenczyk/H_M_storage/analysis/objects/Human_sites_10k.rds")
 
 
 

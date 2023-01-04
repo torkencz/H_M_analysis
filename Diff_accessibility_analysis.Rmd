@@ -73,16 +73,16 @@ plot_combined_cross_species<-function(gene,gene_mouse=NULL,upstr=1000,downstr=10
   print(paste0("plotting gene: ", gene))
   print(paste0("plotting human: ", gene_human," human: ",reg_h))
   print(paste0("plotting mouse: ", gene_mouse," mouse: ",reg_m))
-  mm10_phylp="/home/torkenczyk/conservation_tracks/mm10.60way.phyloP60way.bw"
-  hg38_phylp="/home/torkenczyk/conservation_tracks/hg38.phyloP100way.bw"
-  mm10_lecif="/home/torkenczyk/conservation_tracks/mm10.hg38.LECIF.srt.median.bw"
-  hg38_lecif="/home/torkenczyk/conservation_tracks/hg38.mm10.LECIF.srt.median.bw"
+  mm10_phylp="/brahms/torkenczyk/H_M_storage/conservation_tracks/mm10.60way.phyloP60way.bw"
+  hg38_phylp="/brahms/torkenczyk/H_M_storage/conservation_tracks/hg38.phyloP100way.bw"
+  mm10_lecif="/brahms/torkenczyk/H_M_storage/conservation_tracks/mm10.hg38.LECIF.srt.median.bw"
+  hg38_lecif="/brahms/torkenczyk/H_M_storage/conservation_tracks/hg38.mm10.LECIF.srt.median.bw"
  # conservation_mm10<-BigwigTrack(region = reg_m,bigwig = mm10_phylp,type = 'heatmap')
   #conservation_hg38<-BigwigTrack(region = reg_h,bigwig = hg38_phylp,type = 'heatmap')
   
-   hg38_A549_a="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137776_ENCFF631HEX_signal_of_unique_reads_GRCh38.bigWig"
-   hg38_A549_b="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137777_ENCFF103COS_signal_of_unique_reads_GRCh38.bigWig"
-   hg38_A549_c="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137778_ENCFF957GCK_signal_of_unique_reads_GRCh38.bigWig"
+  # hg38_A549_a="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137776_ENCFF631HEX_signal_of_unique_reads_GRCh38.bigWig"
+   #hg38_A549_b="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137777_ENCFF103COS_signal_of_unique_reads_GRCh38.bigWig"
+   #hg38_A549_c="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137778_ENCFF957GCK_signal_of_unique_reads_GRCh38.bigWig"
   
    
    
@@ -211,13 +211,13 @@ plot_combined_cross_species<-function(gene,gene_mouse=NULL,upstr=1000,downstr=10
   
     plots2<-wrap_plots(list(mouse2b,human), ncol = 1, heights = c(8,10))
     print(paste0("plotting gene: ", gene))
-    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons_yaxe2.png"),width = 20,height=18,units = "cm",res=300)
+    png(filename = paste0("/brahms/torkenczyk/H_M_storage/",gene,"_combined.wcons_yaxe2.png"),width = 20,height=18,units = "cm",res=300)
     print(plots2)
     dev.off()
-    ggsave(plot = plots2,filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/",gene,"_combined.wcons_yaxe.pdf"),width = 10,height=18,units = "cm")
+    ggsave(plot = plots2,filename = paste0("/brahms/torkenczyk/H_M_storage/paper_pdfs/",gene,"_combined.wcons_yaxe.pdf"),width = 10,height=18,units = "cm")
     print("THIS")
     plots<-wrap_plots(list(mouse1,mouse2,human), ncol = 3, widths  = c(10,10,10))
-    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons2.png"),width = 30,height=25,units = "cm",res=300)
+    png(filename = paste0("/brahms/torkenczyk/H_M_storage/",gene,"_combined.wcons2.png"),width = 30,height=25,units = "cm",res=300)
     print(wrap_plots(list(mouse1,mouse2,human), ncol = 3, widths  = c(10,10,10)))
     dev.off()
     
@@ -237,7 +237,7 @@ plot_combined_cross_species<-function(gene,gene_mouse=NULL,upstr=1000,downstr=10
     extend.downstream = downstr,region.highlight = highlight_mouse_reg)
     plots3<-wrap_plots(list(mouse2c,mouse1), ncol = 1, heights = c(8,10))
     
-    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons_yaxe_mouse_VAL.png"),width = 20,height=18,units = "cm",res=300)
+    png(filename = paste0("/brahms/torkenczyk/H_M_storage/",gene,"_combined.wcons_yaxe_mouse_VAL.png"),width = 20,height=18,units = "cm",res=300)
     print(plots3)
     dev.off()
     
@@ -257,7 +257,7 @@ plot_combined_cross_species<-function(gene,gene_mouse=NULL,upstr=1000,downstr=10
     print(plots4)
     dev.off()
     print("THIS2")
-    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons_yaxe_human_VAL.png"),width = 20,height=28,units = "cm",res=300)
+    png(filename = paste0("/brahms/torkenczyk/H_M_storage/",gene,"_combined.wcons_yaxe_human_VAL.png"),width = 20,height=28,units = "cm",res=300)
     print(plots4)
     dev.off()
     
@@ -278,9 +278,10 @@ library(presto)
 library(Signac)
 library(Seurat)
 
+human_all_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_human_tissues.rds")
+mouse_select_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_mouse_tissues.rds")
 
-human_all_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
-mouse_select_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+
 
 ```
 
@@ -318,9 +319,9 @@ for (i in (levels(as.factor(markers_h$group))))
 wrap_plots(da.peaks,ncol=3,nrow = 5)
 
 
-
-hg38tomm9peaks<-read.table(file="/home/torkenczyk/H_M_chromatin_atlas/mouse_data/Mouse_hg38_0.1_peaks.bed",header = F)
-mm10tomm9peaks<-read.table(file="/home/torkenczyk/H_M_chromatin_atlas/mouse_data/Mouse_mm10_peaks.bed",header = F)
+#lifted over peaks
+hg38tomm9peaks<-read.table(file="/brahms/torkenczyk/H_M_storage/analysis/Mouse_hg38_0.1_peaks.bed",header = F)
+mm10tomm9peaks<-read.table(file="/brahms/torkenczyk/H_M_storage/analysis/Mouse_mm10_peaks.bed",header = F)
 hg38tomm9peaks$feature_hg38<-paste(hg38tomm9peaks$V1,hg38tomm9peaks$V2,hg38tomm9peaks$V3,sep = "-")
 
 mm10tomm9peaks$feature_mm10<-paste(mm10tomm9peaks$V1,mm10tomm9peaks$V2,mm10tomm9peaks$V3,sep = "-")
@@ -393,11 +394,12 @@ for (i in (levels(as.factor(markers_h$group))))
   {
   top_num_peaks=700
   }else{top_num_peaks=1000}
-  #select where one is significant at least (this is not necessary what you need more peaks)
+  #select where one is significant at least (this is not necessary when you need more peaks)
   mu<-mu[mu$padj.x<0.05 | mu$padj.y<0.05 | mu$padj_hg38matched<0.05,]
   mu<-mu[with(mu, order(rankavg)),]
   mu$category<-c(rep("shared",times=top_num_peaks),rep("other",times=length(mu$feature_mm9)-top_num_peaks))
   mu<-mu[with(mu, order(rank.human)),]
+  #also did this with 0.05, for the 10K we had to lower the threshold
   mu$category[head(which(mu$category != "shared" & mu$logFC.y > 0 & mu$padj.x > 0.000001),n=top_num_peaks)]<-rep("human",times=top_num_peaks)
   mu<-mu[with(mu, order(rank.mouse)),]
   mu$category[head(which(mu$category != "shared" & mu$logFC.x > 0 & mu$category != "human" & mu$padj.y > 0.000001),n=top_num_peaks)]<-rep("mouse",times=top_num_peaks)
@@ -479,16 +481,15 @@ for (i in (levels(as.factor(markers_h$group))))
 
 
 
-save(shared_DA, file="active_use_objects/for_rahul/Shared.RData")
 
-save(shared_DA, file="active_use_objects/for_rahul/Shared.bw.species.DA.RData")
-save(mouse_DA, file="active_use_objects/for_rahul/Mouse_only.bw.species.DA.RData")
-save(human_DA, file="active_use_objects/for_rahul/Human_only.bw.species.DA.RData")
-saveRDS(muse,file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/All_da_continous_info.rds")
+save(shared_DA, file="/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Shared.bw.species.DA.RData")
+save(mouse_DA, file="/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Mouse_only.bw.species.DA.RData")
+save(human_DA, file="/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Human_only.bw.species.DA.RData")
+saveRDS(muse,file = "/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/All_da_continous_info.rds")
 
 #match with data from bing REN
 
-a<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/cCRE_Accessibility.tsv.gz")
+a<-read.table("/brahms/torkenczyk/H_M_storage/cCRE_Accessibility.tsv.gz")
 
 ctg<-levels(as.factor(na.omit(human_all_atac[[]]$Abbreviation)))
 
@@ -514,7 +515,7 @@ Heatmap(t(scale(t(as.matrix(b)))),show_row_names = FALSE,cluster_columns = FALSE
 plot one gene that is an example of conservation for each celltype
 ```{r}
 
-load("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/for_rahul/Shared.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Shared.bw.species.DA.RData")
 shared_DA$Cardiomyocytes
 
 upstr=5000
@@ -638,11 +639,11 @@ mouse_select_atac[["mm10"]]<-CreateChromatinAssay(
 ```{r}
 
 #check for conservation
-bigwig_lecif<-"~/conservation_tracks/hg38.mm10.LECIF.srt.median.bw"
-bigwig_phyp<-"~/conservation_tracks/hg38.phyloP100way.bw"
-bigwig_phast<-"~/conservation_tracks/hg38.phastCons100way.bw"
-#check for unique mapping
-bigwig_mapability<-"~/mappability_tracks/k50.Umap.MultiTrackMappability.bw"
+bigwig_lecif<-"/brahms/torkenczyk/H_M_storage/analysis/conservation/hg38.mm10.LECIF.srt.median.bw"
+bigwig_phyp<-"/brahms/torkenczyk/H_M_storage/analysis/conservation/hg38.phyloP100way.bw"
+bigwig_phast<-"/brahms/torkenczyk/H_M_storage/analysis/conservation/hg38.phastCons100way.bw"
+#check for unique mapping, ran this later
+bigwig_mapability<-"/brahms/torkenczyk/H_M_storage/analysis/conservation/k50.Umap.MultiTrackMappability.bw"
 
 region_value<-function(x,bigwig_compare){median(rtracklayer::import(con = bigwig_compare,which = StringToGRanges(x),as = "NumericList")[[1]])}
 vregvalue<-Vectorize(region_value,"x")
@@ -660,106 +661,156 @@ median_cons_reg_score_phast<-list()
 median_uniq_reg_score_h_phast<-list()
 median_uniq_reg_score_m_phast<-list()
 
+median_cons_reg_score_map<-list()
+median_uniq_reg_score_h_map<-list()
+median_uniq_reg_score_m_map<-list()
 
 #include 10k sites
-mouse_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Mouse_sites_10k.rds")
-human_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Human_sites_10k.rds")
-shared_10_DA<-readRDS(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Shared_sites_10k.rds")
+mouse_10_DA<-readRDS(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/Mouse_sites_10k.rds")
+human_10_DA<-readRDS(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/Human_sites_10k.rds")
+shared_10_DA<-readRDS(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/Shared_sites_10k.rds")
+
+#1k analysis
+load(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Shared.bw.species.DA.RData")
+load(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Human_only.bw.species.DA.RData")
+load(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Mouse_only.bw.species.DA.RData")
 
 
 
 
-
-for (ct in names(human_DA)[c(11,13)]){
+for (ct in names(human_DA)[3:13]){
 print(ct)
-#clusth<-human_DA[[ct]]$feature_hg38_universal 
-clusth<-human_10_DA[[ct]]
-#clustm<-mouse_DA[[ct]]$feature_hg38_universal  
-clustm<-mouse_10_DA[[ct]]
+clusth<-human_DA[[ct]]$feature_hg38_universal 
+#clusth<-human_10_DA[[ct]]
+clustm<-mouse_DA[[ct]]$feature_hg38_universal  
+#clustm<-mouse_10_DA[[ct]]
 
-#int_ist<-shared_DA[[ct]]$feature_hg38_universal
-int_ist<-shared_10_DA[[ct]]
+int_ist<-shared_DA[[ct]]$feature_hg38_universal
+#int_ist<-shared_10_DA[[ct]]
 
 int_ist<-unique(GRangesToString(sort(StringToGRanges(int_ist))))
-int_ist<-int_ist[which(seqnames(StringToGRanges(int_ist))!="chrY")]
+int_ist<-int_ist[which(as.character(seqnames(StringToGRanges(int_ist)))!="chrY")]
 
 int_bed<-data.frame(chr=str_split_fixed(int_ist,"-",n=3)[,1],start=str_split_fixed(int_ist,"-",n=3)[,2],end=str_split_fixed(int_ist,"-",n=3)[,3])
-write.table(int_bed,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Shared2celline.",ct,".latest.10k.bed"),quote = F,sep = "\t",row.names = F,col.names = F)
+write.table(int_bed,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Shared2celline.",ct,".latest.1k.bed"),quote = F,sep = "\t",row.names = F,col.names = F)
 unint_ist_m<-unique(GRangesToString(sort(StringToGRanges(clustm))))
 unint_ist_h<-unique(GRangesToString(sort(StringToGRanges(clusth))))
 
-unint_ist_m<-unint_ist_m[which(seqnames(StringToGRanges(unint_ist_m))!="chrY")]
-unint_ist_h<-unint_ist_h[which(seqnames(StringToGRanges(unint_ist_h))!="chrY")]
+unint_ist_m<-unint_ist_m[which(as.character(seqnames(StringToGRanges(unint_ist_m)))!="chrY")]
+unint_ist_h<-unint_ist_h[which(as.character(seqnames(StringToGRanges(unint_ist_h)))!="chrY")]
 unintint_bed_h<-data.frame(chr=str_split_fixed(unint_ist_m,"-",n=3)[,1],start=str_split_fixed(unint_ist_m,"-",n=3)[,2],end=str_split_fixed(unint_ist_m,"-",n=3)[,3])
 unintint_bed_m<-data.frame(chr=str_split_fixed(unint_ist_h,"-",n=3)[,1],start=str_split_fixed(unint_ist_h,"-",n=3)[,2],end=str_split_fixed(unint_ist_h,"-",n=3)[,3])
-write.table(unintint_bed_h,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Uniq2celline.h.",ct,".latest.10k.bed"),quote = F,sep = "\t",row.names = F,col.names = F)
-write.table(unintint_bed_m,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Uniq2celline.m.",ct,".latest.10k.bed"),quote = F,sep = "\t",row.names = F,col.names = F)
+write.table(unintint_bed_h,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Uniq2celline.h.",ct,".latest.1k.bed"),quote = F,sep = "\t",row.names = F,col.names = F)
+write.table(unintint_bed_m,file = paste0("/home/torkenczyk/LD/celltype_bedfiles/Uniq2celline.m.",ct,".latest.1k.bed"),quote = F,sep = "\t",row.names = F,col.names = F)
 print(length(unint_ist_h))
 print(length(unint_ist_m))
 print(length(int_ist))
 
-#B_cells Cardiomyocytes Endothelial_cells Enterocytes Fibroblasts Goblet_cells Hepatocytes Macrophages Myofibroblasts Pneumocytes Schwann_cells
+#B_cells Cardiomyocytes Endothelial_cells Enterocytes Fibroblasts Goblet_cells Hepatocytes Macrophages 
+#Myofibroblasts Pneumocytes Schwann_cells
 
 print("shared")
 median_cons_reg_score_lecif[[ct]]<-vregvalue(x = int_ist,bigwig_compare = bigwig_lecif)
 median_cons_reg_score_phast[[ct]]<-vregvalue(x = int_ist,bigwig_compare = bigwig_phast)
 median_cons_reg_score_phyp[[ct]]<-vregvalue(x = int_ist,bigwig_compare = bigwig_phyp)
-
+median_cons_reg_score_map[[ct]]<-vregvalue(x = int_ist,bigwig_compare = bigwig_mapability)
 
 print("Mouse")
 median_uniq_reg_score_m_lecif[[ct]]<-vregvalue(x = unint_ist_m,bigwig_compare = bigwig_lecif)
 median_uniq_reg_score_m_phast[[ct]]<-vregvalue(x = unint_ist_m,bigwig_compare = bigwig_phast)
 median_uniq_reg_score_m_phyp[[ct]]<-vregvalue(x = unint_ist_m,bigwig_compare = bigwig_phyp)
-
+median_uniq_reg_score_m_map[[ct]]<-vregvalue(x = unint_ist_m,bigwig_compare = bigwig_mapability)
 
 print("Human")
 median_uniq_reg_score_h_lecif[[ct]]<-vregvalue(x = unint_ist_h,bigwig_compare = bigwig_lecif)
 median_uniq_reg_score_h_phast[[ct]]<-vregvalue(x = unint_ist_h,bigwig_compare = bigwig_phast)
 median_uniq_reg_score_h_phyp[[ct]]<-vregvalue(x = unint_ist_h,bigwig_compare = bigwig_phyp)
+median_uniq_reg_score_h_map[[ct]]<-vregvalue(x = unint_ist_h,bigwig_compare = bigwig_mapability)
+
 }
 
 
 
-
-top_1000_cons_phast<-list()
-top_1000_cons_phyp<-list()
-top_1000_cons_lecif<-list()
+#10k
+top_10k_cons_phast<-list()
+top_10k_cons_phyp<-list()
+top_10k_cons_lecif<-list()
+#1k
+top_1k_cons_phast<-list()
+top_1k_cons_phyp<-list()
+top_1k_cons_lecif<-list()
+top_1k_cons_map<-list()
 
 for (ct in names(human_DA)){
 a<-data.frame(score=median_cons_reg_score_lecif[[ct]],annot=rep("Conserved",times=length(median_cons_reg_score_lecif[[ct]])),celltype=rep(ct,times=length(median_cons_reg_score_lecif[[ct]])))
 b<-data.frame(score=median_uniq_reg_score_m_lecif[[ct]],annot=rep("Mouse",times=length(median_uniq_reg_score_m_lecif[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_m_lecif[[ct]])))
 c<-data.frame(score=median_uniq_reg_score_h_lecif[[ct]],annot=rep("Human",times=length(median_uniq_reg_score_h_lecif[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_h_lecif[[ct]])))
-top_1000_cons_lecif[[ct]]<-rbind(a,b,c)
+top_1k_cons_lecif[[ct]]<-rbind(a,b,c)
 
 a<-data.frame(score=median_cons_reg_score_phast[[ct]],annot=rep("Conserved",times=length(median_cons_reg_score_phast[[ct]])),celltype=rep(ct,times=length(median_cons_reg_score_phast[[ct]])))
 b<-data.frame(score=median_uniq_reg_score_m_phast[[ct]],annot=rep("Mouse",times=length(median_uniq_reg_score_m_phast[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_m_phast[[ct]])))
 c<-data.frame(score=median_uniq_reg_score_h_phast[[ct]],annot=rep("Human",times=length(median_uniq_reg_score_h_phast[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_h_phast[[ct]])))
-top_1000_cons_phast[[ct]]<-rbind(a,b,c)
+top_1k_cons_phast[[ct]]<-rbind(a,b,c)
 
 a<-data.frame(score=median_cons_reg_score_phyp[[ct]],annot=rep("Conserved",times=length(median_cons_reg_score_phyp[[ct]])),celltype=rep(ct,times=length(median_cons_reg_score_phyp[[ct]])))
 b<-data.frame(score=median_uniq_reg_score_m_phyp[[ct]],annot=rep("Mouse",times=length(median_uniq_reg_score_m_phyp[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_m_phyp[[ct]])))
 c<-data.frame(score=median_uniq_reg_score_h_phyp[[ct]],annot=rep("Human",times=length(median_uniq_reg_score_h_phyp[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_h_phyp[[ct]])))
-top_1000_cons_phyp[[ct]]<-rbind(a,b,c)
+top_1k_cons_phyp[[ct]]<-rbind(a,b,c)
+
+a<-data.frame(score=median_cons_reg_score_map[[ct]],annot=rep("Conserved",times=length(median_cons_reg_score_map[[ct]])),celltype=rep(ct,times=length(median_cons_reg_score_map[[ct]])))
+b<-data.frame(score=median_uniq_reg_score_m_map[[ct]],annot=rep("Mouse",times=length(median_uniq_reg_score_m_map[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_m_map[[ct]])))
+c<-data.frame(score=median_uniq_reg_score_h_map[[ct]],annot=rep("Human",times=length(median_uniq_reg_score_h_map[[ct]])),celltype=rep(ct,times=length(median_uniq_reg_score_h_map[[ct]])))
+top_1k_cons_map[[ct]]<-rbind(a,b,c)
+
 
 }
 
-top_1000_cons_lecif_df<-Reduce(rbind,top_1000_cons_lecif)
-top_1000_cons_phast_df<-Reduce(rbind,top_1000_cons_phast)
-top_1000_cons_phyp_df<-Reduce(rbind,top_1000_cons_phyp)
+#10k
+top_10k_cons_lecif_df<-Reduce(rbind,top_10k_cons_lecif)
+top_10k_cons_phast_df<-Reduce(rbind,top_10k_cons_phast)
+top_10k_cons_phyp_df<-Reduce(rbind,top_10k_cons_phyp)
+top_10k_cons_map_df<-Reduce(rbind,top_10k_cons_phyp)
+#1k
+top_1k_cons_lecif_df<-Reduce(rbind,top_1k_cons_lecif)
+top_1k_cons_phast_df<-Reduce(rbind,top_1k_cons_phast)
+top_1k_cons_phyp_df<-Reduce(rbind,top_1k_cons_phyp)
+top_1k_cons_map_df<-Reduce(rbind,top_1k_cons_map)
 
-
-mapp<-ggplot(top_1000_cons_lecif_df,aes(y=score,x=annot,fill=annot))+geom_boxplot()+theme_classic()+ylab("LECIF score")+xlab("")
-mapp2<-ggplot(top_1000_cons_phast_df,aes(y=score,x=celltype,fill=annot))+geom_boxplot()+theme_classic()
-mapp3<-ggplot(top_1000_cons_phyp_df,aes(y=score,x=celltype,fill=annot))+geom_boxplot()+theme_classic()+ylab("PhyloP score")+xlab("")
+mapp<-ggplot(top_10k_cons_lecif_df,aes(y=score,x=annot,fill=annot))+geom_boxplot()+theme_classic()+ylab("LECIF score")+xlab("")
+mapp2<-ggplot(top_10k_cons_phast_df,aes(y=score,x=celltype,fill=annot))+geom_boxplot()+theme_classic()
+mapp3<-ggplot(top_10k_cons_phyp_df,aes(y=score,x=celltype,fill=annot))+geom_boxplot()+theme_classic()+ylab("PhyloP score")+xlab("")
 
 
 mapp|mapp2|mapp3
 
+#did it with top 1000 sites as well and included Multimap 
+write.table(top_1k_cons_map_df,row.names = T,col.names = T,sep="\t",quote=F,file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/Multimap_cons_1k.sites.txt")
+write.table(top_1k_cons_phyp_df,row.names = T,col.names = T,sep="\t",quote=F,file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/Phylop_cons_1k.sites.txt")
+write.table(top_1k_cons_phast_df,row.names = T,col.names = T,sep="\t",quote=F,file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/Phast_cons_1k.sites.txt")
+write.table(top_1k_cons_lecif_df,row.names = T,col.names = T,sep="\t",quote=F,file="/home/torkenczyk/H_M_chromatin_atlas/human_data/Lesik_cons_1k.sites.txt")
 
-write.table(top_1000_cons_df,row.names = T,col.names = T,sep="\t",quote=F,file = "Multimap_cons_1000.sites.txt")
-write.table(top_1000_cons_phyp_df,row.names = T,col.names = T,sep="\t",quote=F,file = "Phylop_cons_1000.sites.txt")
-write.table(top_1000_cons_phast_df,row.names = T,col.names = T,sep="\t",quote=F,file = "Phast_cons_1000.sites.txt")
-write.table(top_1000_cons_lecif_df,row.names = T,col.names = T,sep="\t",quote=F,file = "LECIF_cons_1000.sites.txt")
+ggplot(top_1k_cons_lecif_df,aes(y=score,x=annot,fill=annot))+geom_boxplot()+theme_classic()+ylab("LECIF score")+xlab("")
+
+
+library(ggpubr)
+
+# Visualize: Specify the comparisons you want
+my_comparisons <- list( c("Mouse", "Conserved"),c("Conserved","Human"))
+p_phast<-ggboxplot(top_1k_cons_phast_df, x = "annot",fill="annot" ,y = "score", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 1.1)+ylab("PHAST score")
+
+p_phylop<-ggboxplot(top_1k_cons_phyp_df, x = "annot",fill="annot" ,y = "score", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 1.1)+ylab("PhyloP score")
+
+p_lecif<-ggboxplot(top_1k_cons_lecif_df, x = "annot",fill="annot" ,y = "score", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 1.1)+ylab("LECIF score")
+
+wrap_plots(list(p_top5mot,p_phast,p_phylop,p_lecif),ncol=2,nrow = 2)
+
+
 ```
 
 
@@ -967,3 +1018,675 @@ p1
 
 
 ```
+
+#genehancer, chromHMM and distance metrics of these sites
+
+```{r}
+#do comparison plot of where things lie
+table(PNFIN$type)
+table(PHMIN$type)
+
+test<-StringToGRanges(mouse_DA$`B-lymphocytes`$feature_hg38_universal)
+
+library("TxDb.Hsapiens.UCSC.hg38.knownGene")
+library("org.Hs.eg.db")
+
+load(file="/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Shared.bw.species.DA.RData")
+load(file="/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Mouse_only.bw.species.DA.RData")
+load(file="/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Human_only.bw.species.DA.RData")
+
+human_10_DA
+mouse_10_DA
+shared_10_DA
+
+annotateRegions <- function(
+  querygranges,
+  txdb,
+  annoDb,
+  ...
+){
+  # Check depedencies
+  if(! "ChIPseeker" %in% installed.packages()){
+    stop('Please, install ChIPseeker: \n source("https://bioconductor.org/biocLite.R") \nbiocLite("ChIPseeker")')
+  } else {
+    require(ChIPseeker)
+  }
+  
+  regions <- querygranges
+  #regionAnno <- as.data.frame(annotatePeak(regions, TxDb=txdb, annoDb=annoDb, ...))
+  regionAnno <- annotatePeak(regions, TxDb=txdb, annoDb=annoDb,tssRegion=c(-500, 500))
+  #regionAnno[grep("Exon", regionAnno$annotation), "annotation"] <- "Exon"
+ # regionAnno[grep("Intron", regionAnno$annotation), "annotation"] <- "Intron"
+  #rownames(regionAnno) <- regionAnno$regionNames
+  #regionAnno <- regionAnno[rownames(object.region.data), !(colnames(regionAnno) %in% c("regionNames", "strand"))]
+  return(regionAnno)
+}
+
+results_stats<-data.frame(Feature=character(),Frequency=double(),celltype=character(),annot=character())
+for (i in names(shared_DA)){
+print(i)
+test<-StringToGRanges(shared_DA[[i]]$feature_hg38_universal)
+out_test<-annotateRegions(sort(test),txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,annoDb = "org.Hs.eg.db")    
+out_test<-as.data.frame(out_test@annoStat)
+out_test$celltype=i
+out_test$annot<-"shared"
+results_stats<-rbind(results_stats,out_test)
+
+test<-StringToGRanges(mouse_DA[[i]]$feature_hg38_universal)
+out_test<-annotateRegions(sort(test),txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,annoDb = "org.Hs.eg.db")    
+out_test<-as.data.frame(out_test@annoStat)
+out_test$celltype=i
+out_test$annot<-"mouse"
+results_stats<-rbind(results_stats,out_test)
+
+test<-StringToGRanges(human_DA[[i]]$feature_hg38_universal)
+out_test<-annotateRegions(sort(test),txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,annoDb = "org.Hs.eg.db")    
+out_test<-as.data.frame(out_test@annoStat)
+out_test$celltype=i
+out_test$annot<-"human"
+results_stats<-rbind(results_stats,out_test)
+
+}
+
+results_stats$combined_annot<-paste(results_stats$celltype,results_stats$annot,sep="_")
+
+ggplot(data = results_stats,aes(x=Feature,fill=Frequency,y=combined_annot))+geom_tile()
+
+library(reshape2)
+acast(results_stats, Feature~y, value.var="z")
+
+ggplot(data = results_stats,aes(x=Feature,y=Frequency,fill=annot))+geom_boxplot()+theme_classic()
+#saved now
+#also redid with 10k
+results_stats2<-data.frame(Feature=character(),Frequency=double(),celltype=character(),annot=character())
+for (i in names(shared_DA)){
+print(i)
+test<-StringToGRanges(shared_10_DA[[i]],sep = c("-","-"))
+out_test<-annotateRegions(sort(test),txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,annoDb = "org.Hs.eg.db")    
+out_test<-as.data.frame(out_test@annoStat)
+out_test$celltype=i
+out_test$annot<-"shared"
+results_stats2<-rbind(results_stats2,out_test)
+
+test<-StringToGRanges(mouse_10_DA[[i]])
+out_test<-annotateRegions(sort(test),txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,annoDb = "org.Hs.eg.db")    
+out_test<-as.data.frame(out_test@annoStat)
+out_test$celltype=i
+out_test$annot<-"mouse"
+results_stats2<-rbind(results_stats2,out_test)
+
+test<-StringToGRanges(human_10_DA[[i]])
+out_test<-annotateRegions(sort(test),txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,annoDb = "org.Hs.eg.db")    
+out_test<-as.data.frame(out_test@annoStat)
+out_test$celltype=i
+out_test$annot<-"human"
+results_stats2<-rbind(results_stats2,out_test)
+
+}
+
+results_stats2$combined_annot<-paste(results_stats2$celltype,results_stats2$annot,sep="_")
+ggplot(data = results_stats2,aes(x=Feature,fill=Frequency,y=combined_annot))+geom_tile()
+ggplot(data = results_stats2,aes(x=Feature,y=Frequency,fill=annot))+geom_boxplot()+theme_classic()
+#end of 10k
+
+
+#with TSS approach
+tss.positions_hg38 <- GetTSSPositions(ranges = Annotation(human_all_atac))
+tss.positions_mouse <- GetTSSPositions(ranges = Annotation(mouse_select_atac))
+
+genehancer<-read.table("/brahms/torkenczyk/H_M_storage/analysis/conservation/hg38_genehancer.txt",header = F)
+genehancerloc<-StringToGRanges(paste(genehancer$V1,genehancer$V2,genehancer$V3,sep = "-"),sep = c("-","-"))
+
+genehancer_list<-list()
+distances_list<-list()
+for (i in names(shared_DA)){
+print(i)
+shared_sites<-StringToGRanges(shared_DA[[i]]$feature_hg38_universal)
+human_sites<-StringToGRanges(human_DA[[i]]$feature_hg38_universal)
+mouse_sites<-StringToGRanges(mouse_DA[[i]]$mm9_lifted_mm10peak_mouse)
+mouse_sites_hg38<-StringToGRanges(mouse_DA[[i]]$feature_hg38_universal)
+ 
+ 
+shared_dist<-distanceToNearest(shared_sites,tss.positions_hg38)
+shared_dist<-shared_dist@elementMetadata$distance
+human_dist<-distanceToNearest(human_sites,tss.positions_hg38)  
+human_dist<-human_dist@elementMetadata$distance
+mouse_dist<-distanceToNearest(mouse_sites,tss.positions_mouse)  
+mouse_dist<-mouse_dist@elementMetadata$distance
+
+distances_list[[i]]<-data.frame(shared=shared_dist,human=human_dist,mouse=mouse_dist)
+
+#genehancer shared
+shared_genehancerloc<-subjectHits(findOverlaps(shared_sites,genehancerloc))
+shared_query<-queryHits(findOverlaps(shared_sites,genehancerloc))
+genehancer_select_sh<-genehancer[shared_genehancerloc,]
+genehancer_select_sh$original_region<-shared_DA[[i]]$feature_hg38_universal[shared_query]
+shared_genehancerloc<-subjectHits(findOverlaps(shared_sites,genehancerloc))
+shared_query<-queryHits(findOverlaps(shared_sites,genehancerloc))
+genehancer_select_sh<-genehancer[shared_genehancerloc,]
+genehancer_select_sh$original_region<-shared_DA[[i]]$feature_hg38_universal[shared_query]
+#genehancer human
+human_genehancerloc<-subjectHits(findOverlaps(human_sites,genehancerloc))
+human_query<-queryHits(findOverlaps(human_sites,genehancerloc))
+genehancer_select_hu<-genehancer[human_genehancerloc,]
+genehancer_select_hu$original_region<-human_DA[[i]]$feature_hg38_universal[human_query]
+human_genehancerloc<-subjectHits(findOverlaps(human_sites,genehancerloc))
+human_query<-queryHits(findOverlaps(human_sites,genehancerloc))
+genehancer_select_hu<-genehancer[human_genehancerloc,]
+genehancer_select_hu$original_region<-human_DA[[i]]$feature_hg38_universal[human_query]
+#genehancer mouse
+mouse_genehancerloc<-subjectHits(findOverlaps(mouse_sites_hg38,genehancerloc))
+mouse_query<-queryHits(findOverlaps(mouse_sites_hg38,genehancerloc))
+genehancer_select_mo<-genehancer[mouse_genehancerloc,]
+genehancer_select_mo$original_region<-mouse_DA[[i]]$feature_hg38_universal[mouse_query]
+mouse_genehancerloc<-subjectHits(findOverlaps(mouse_sites_hg38,genehancerloc))
+mouse_query<-queryHits(findOverlaps(mouse_sites_hg38,genehancerloc))
+genehancer_select_mo<-genehancer[mouse_genehancerloc,]
+genehancer_select_mo$original_region<-mouse_DA[[i]]$feature_hg38_universal[mouse_query]
+
+genehancer_list[[i]]<-data.frame(genehancerscore=c(genehancer_select_sh$V6,genehancer_select_hu$V6,mouse=genehancer_select_mo$V6),annot=rep(x = c("shared","human","mouse"),times=c(length(genehancer_select_sh$V6),length(genehancer_select_hu$V6),length(genehancer_select_mo$V6))))
+
+
+
+}
+
+all_distances<-bind_rows(distances_list, .id = "cell_type")
+all_distances<-melt(all_distances,id.vars = "cell_type")
+
+
+p<-ggplot(all_distances,aes(x=cell_type,y=value,fill=variable))+geom_boxplot()+theme_classic()
+
+
+all_genehancer<-bind_rows(genehancer_list, .id = "cell_type")
+
+#do test
+library(ggpubr)
+
+# Visualize: Specify the comparisons you want
+my_comparisons <- list( c("mouse", "shared"),c("shared","human"))
+p_gh<-ggboxplot(all_genehancer, x = "annot",fill="annot" ,y = "genehancerscore", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 3)+ylab("Genehancer score")
+
+
+p<-ggplot(all_distances,aes(x=cell_type,y=log10(value+1),fill=variable))+geom_boxplot()+theme_classic()
+p<-ggplot(all_distances,aes(x=variable,y=log10(value+1),fill=variable))+geom_boxplot()+theme_classic()
+
+p2<-ggplot(all_genehancer,aes(x=cell_type,y=genehancerscore,fill=annot))+geom_boxplot()+theme_classic()
+
+save(distances_list,file = "Distances_from_TSS.RData")
+
+#CHROM HMM imputed 25 marks and 15 core marks
+#https://egg2.wustl.edu/roadmap/data/byFileType/chromhmmSegmentations/ChmmModels/imputed12marks/jointModel/final/
+#lets look at pimary B track chromHMM, I count all of the annotations that it overlaps
+
+Prim_B<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E032_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_B$V4
+Prim_B<-StringToGRanges(paste(Prim_B$V1,Prim_B$V2,Prim_B$V3,sep = "_"),sep = c("_","_"))
+Prim_B$annot <- DataFrame(annot = pn)
+
+Shared_B<-StringToGRanges(shared_DA$`B-lymphocytes`$feature_hg38_universal)
+Human_B<-StringToGRanges(human_DA$`B-lymphocytes`$feature_hg38_universal)
+Mouse_B<-StringToGRanges(mouse_DA$`B-lymphocytes`$feature_hg38_universal)
+
+
+sharedB<-Prim_B[queryHits(findOverlaps(Prim_B,Shared_B))]
+humanB<-Prim_B[queryHits(findOverlaps(Prim_B,Human_B))]
+mouseB<-Prim_B[queryHits(findOverlaps(Prim_B,Mouse_B))]
+
+table(sharedB$annot)
+table(mouseB$annot)
+table(humanB$annot)
+
+
+Prim_T<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E034_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_T$V4
+Prim_T<-StringToGRanges(paste(Prim_T$V1,Prim_T$V2,Prim_T$V3,sep = "_"),sep = c("_","_"))
+Prim_T$annot <- DataFrame(annot = pn)
+
+Shared_T<-StringToGRanges(shared_DA$`T-lymphocytes`$feature_hg38_universal)
+Human_T<-StringToGRanges(human_DA$`T-lymphocytes`$feature_hg38_universal)
+Mouse_T<-StringToGRanges(mouse_DA$`T-lymphocytes`$feature_hg38_universal)
+
+sharedT<-Prim_T[queryHits(findOverlaps(Prim_T,Shared_T))]
+humanT<-Prim_T[queryHits(findOverlaps(Prim_T,Human_T))]
+mouseT<-Prim_T[queryHits(findOverlaps(Prim_T,Mouse_T))]
+
+table(sharedT$annot)
+table(mouseT$annot)
+table(humanT$annot)
+
+Prim_SM<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E076_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_SM$V4
+Prim_SM<-StringToGRanges(paste(Prim_SM$V1,Prim_SM$V2,Prim_SM$V3,sep = "_"),sep = c("_","_"))
+Prim_SM$annot <- DataFrame(annot = pn)
+
+Shared_SM<-StringToGRanges(shared_DA$`Smooth muscle cells`$feature_hg38_universal)
+Human_SM<-StringToGRanges(human_DA$`Smooth muscle cells`$feature_hg38_universal)
+Mouse_SM<-StringToGRanges(mouse_DA$`Smooth muscle cells`$feature_hg38_universal)
+
+sharedSM<-Prim_SM[queryHits(findOverlaps(Prim_SM,Shared_SM))]
+humanSM<-Prim_SM[queryHits(findOverlaps(Prim_SM,Human_SM))]
+mouseSM<-Prim_SM[queryHits(findOverlaps(Prim_SM,Mouse_SM))]
+
+table(sharedSM$annot)
+table(mouseSM$annot)
+table(humanSM$annot)
+
+
+Prim_PN<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E114_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_PN$V4
+Prim_PN<-StringToGRanges(paste(Prim_PN$V1,Prim_PN$V2,Prim_PN$V3,sep = "_"),sep = c("_","_"))
+Prim_PN$annot <- DataFrame(annot = pn)
+
+Shared_PN<-StringToGRanges(shared_DA$Pneumocytes$feature_hg38_universal)
+Human_PN<-StringToGRanges(human_DA$Pneumocytes$feature_hg38_universal)
+Mouse_PN<-StringToGRanges(mouse_DA$Pneumocytes$feature_hg38_universal)
+
+sharedPN<-Prim_PN[queryHits(findOverlaps(Prim_PN,Shared_PN))]
+humanPN<-Prim_PN[queryHits(findOverlaps(Prim_PN,Human_PN))]
+mousePN<-Prim_PN[queryHits(findOverlaps(Prim_PN,Mouse_PN))]
+
+table(sharedPN$annot)
+table(mousePN$annot)
+table(humanPN$annot)
+
+#For endothelial cells and cardiomyocites I use heart
+
+Prim_CR<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E095_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_CR$V4
+Prim_CR<-StringToGRanges(paste(Prim_CR$V1,Prim_CR$V2,Prim_CR$V3,sep = "_"),sep = c("_","_"))
+Prim_CR$annot <- DataFrame(annot = pn)
+
+Shared_CR<-StringToGRanges(shared_DA$Cardiomyocytes$feature_hg38_universal)
+Human_CR<-StringToGRanges(human_DA$Cardiomyocytes$feature_hg38_universal)
+Mouse_CR<-StringToGRanges(mouse_DA$Cardiomyocytes$feature_hg38_universal)
+
+sharedCR<-Prim_CR[queryHits(findOverlaps(Prim_CR,Shared_CR))]
+humanCR<-Prim_CR[queryHits(findOverlaps(Prim_CR,Human_CR))]
+mouseCR<-Prim_CR[queryHits(findOverlaps(Prim_CR,Mouse_CR))]
+
+table(sharedCR$annot)
+table(mouseCR$annot)
+table(humanCR$annot)
+
+
+Shared_END<-StringToGRanges(shared_DA$`Endothelial cells`$feature_hg38_universal)
+Human_END<-StringToGRanges(human_DA$`Endothelial cells`$feature_hg38_universal)
+Mouse_END<-StringToGRanges(mouse_DA$`Endothelial cells`$feature_hg38_universal)
+
+sharedEND<-Prim_CR[queryHits(findOverlaps(Prim_CR,Shared_END))]
+humanEND<-Prim_CR[queryHits(findOverlaps(Prim_CR,Human_END))]
+mouseEND<-Prim_CR[queryHits(findOverlaps(Prim_CR,Mouse_END))]
+
+table(sharedEND$annot)
+table(mouseEND$annot)
+table(humanEND$annot)
+
+
+
+#fibroblast comp 
+
+
+Prim_FB<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E128_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_FB$V4
+Prim_FB<-StringToGRanges(paste(Prim_FB$V1,Prim_FB$V2,Prim_FB$V3,sep = "_"),sep = c("_","_"))
+Prim_FB$annot <- DataFrame(annot = pn)
+
+
+Shared_FB<-StringToGRanges(shared_DA$Fibroblasts$feature_hg38_universal)
+Human_FB<-StringToGRanges(human_DA$Fibroblasts$feature_hg38_universal)
+Mouse_FB<-StringToGRanges(mouse_DA$Fibroblasts$feature_hg38_universal)
+
+sharedFB<-Prim_FB[queryHits(findOverlaps(Prim_FB,Shared_FB))]
+humanFB<-Prim_FB[queryHits(findOverlaps(Prim_FB,Human_FB))]
+mouseFB<-Prim_FB[queryHits(findOverlaps(Prim_FB,Mouse_FB))]
+
+table(sharedFB$annot)
+table(mouseFB$annot)
+table(humanFB$annot)
+
+Shared_MF<-StringToGRanges(shared_DA$Myofibroblasts$feature_hg38_universal)
+Human_MF<-StringToGRanges(human_DA$Myofibroblasts$feature_hg38_universal)
+Mouse_MF<-StringToGRanges(mouse_DA$Myofibroblasts$feature_hg38_universal)
+
+sharedMF<-Prim_FB[queryHits(findOverlaps(Prim_FB,Shared_MF))]
+humanMF<-Prim_FB[queryHits(findOverlaps(Prim_FB,Human_MF))]
+mouseMF<-Prim_FB[queryHits(findOverlaps(Prim_FB,Mouse_MF))]
+
+table(sharedMF$annot)
+table(mouseMF$annot)
+table(humanMF$annot)
+
+#colonic mucosa for enterocytes and goblet cells
+
+Prim_ENT<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E075_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_ENT$V4
+Prim_ENT<-StringToGRanges(paste(Prim_ENT$V1,Prim_ENT$V2,Prim_ENT$V3,sep = "_"),sep = c("_","_"))
+Prim_ENT$annot <- DataFrame(annot = pn)
+
+
+Shared_ENT<-StringToGRanges(shared_DA$Enterocytes$feature_hg38_universal)
+Human_ENT<-StringToGRanges(human_DA$Enterocytes$feature_hg38_universal)
+Mouse_ENT<-StringToGRanges(mouse_DA$Enterocytes$feature_hg38_universal)
+
+sharedENT<-Prim_ENT[queryHits(findOverlaps(Prim_ENT,Shared_ENT))]
+humanENT<-Prim_ENT[queryHits(findOverlaps(Prim_ENT,Human_ENT))]
+mouseENT<-Prim_ENT[queryHits(findOverlaps(Prim_ENT,Mouse_ENT))]
+
+table(sharedENT$annot)
+table(mouseENT$annot)
+table(humanENT$annot)
+
+Shared_GOB<-StringToGRanges(shared_DA$`Goblet cells`$feature_hg38_universal)
+Human_GOB<-StringToGRanges(human_DA$`Goblet cells`$feature_hg38_universal)
+Mouse_GOB<-StringToGRanges(mouse_DA$`Goblet cells`$feature_hg38_universal)
+
+sharedGOB<-Prim_ENT[queryHits(findOverlaps(Prim_ENT,Shared_GOB))]
+humanGOB<-Prim_ENT[queryHits(findOverlaps(Prim_ENT,Human_GOB))]
+mouseGOB<-Prim_ENT[queryHits(findOverlaps(Prim_ENT,Mouse_GOB))]
+
+table(sharedGOB$annot)
+table(mouseGOB$annot)
+table(humanGOB$annot)
+
+#liver and hepatocytes
+
+Prim_HEP<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E066_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_HEP$V4
+Prim_HEP<-StringToGRanges(paste(Prim_HEP$V1,Prim_HEP$V2,Prim_HEP$V3,sep = "_"),sep = c("_","_"))
+Prim_HEP$annot <- DataFrame(annot = pn)
+
+
+Shared_HEP<-StringToGRanges(shared_DA$Hepatocytes$feature_hg38_universal)
+Human_HEP<-StringToGRanges(human_DA$Hepatocytes$feature_hg38_universal)
+Mouse_HEP<-StringToGRanges(mouse_DA$Hepatocytes$feature_hg38_universal)
+
+sharedHEP<-Prim_HEP[queryHits(findOverlaps(Prim_HEP,Shared_HEP))]
+humanHEP<-Prim_HEP[queryHits(findOverlaps(Prim_HEP,Human_HEP))]
+mouseHEP<-Prim_HEP[queryHits(findOverlaps(Prim_HEP,Mouse_HEP))]
+
+table(sharedHEP$annot)
+table(mouseHEP$annot)
+table(humanHEP$annot)
+
+#monocytes and macrophages
+
+Prim_MAC<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E124_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_MAC$V4
+Prim_MAC<-StringToGRanges(paste(Prim_MAC$V1,Prim_MAC$V2,Prim_MAC$V3,sep = "_"),sep = c("_","_"))
+Prim_MAC$annot <- DataFrame(annot = pn)
+
+
+Shared_MAC<-StringToGRanges(shared_DA$Macrophages$feature_hg38_universal)
+Human_MAC<-StringToGRanges(human_DA$Macrophages$feature_hg38_universal)
+Mouse_MAC<-StringToGRanges(mouse_DA$Macrophages$feature_hg38_universal)
+
+sharedMAC<-Prim_MAC[queryHits(findOverlaps(Prim_MAC,Shared_MAC))]
+humanMAC<-Prim_MAC[queryHits(findOverlaps(Prim_MAC,Human_MAC))]
+mouseMAC<-Prim_MAC[queryHits(findOverlaps(Prim_MAC,Mouse_MAC))]
+
+table(sharedMAC$annot)
+table(mouseMAC$annot)
+table(humanMAC$annot)
+
+
+#astrocytes and schewann cells
+
+Prim_SCH<-read.table("/home/torkenczyk/H_M_chromatin_atlas/chromHMM/core_marks/E125_15_coreMarks_hg38lift_mnemonics.bed.gz")
+pn<-Prim_SCH$V4
+Prim_SCH<-StringToGRanges(paste(Prim_SCH$V1,Prim_SCH$V2,Prim_SCH$V3,sep = "_"),sep = c("_","_"))
+Prim_SCH$annot <- DataFrame(annot = pn)
+
+
+Shared_SCH<-StringToGRanges(shared_DA$`Schwann cells`$feature_hg38_universal)
+Human_SCH<-StringToGRanges(human_DA$`Schwann cells`$feature_hg38_universal)
+Mouse_SCH<-StringToGRanges(mouse_DA$`Schwann cells`$feature_hg38_universal)
+
+sharedSCH<-Prim_SCH[queryHits(findOverlaps(Prim_SCH,Shared_SCH))]
+humanSCH<-Prim_SCH[queryHits(findOverlaps(Prim_SCH,Human_SCH))]
+mouseSCH<-Prim_SCH[queryHits(findOverlaps(Prim_SCH,Mouse_SCH))]
+
+table(sharedSCH$annot)
+table(mouseSCH$annot)
+table(humanSCH$annot)
+
+
+#I did the following block with shared mouse and human
+
+BS=data.frame(table(sharedB$annot),annot=rep("B-lymphocytes",times=length(table(sharedB$annot))))
+MAC=data.frame(table(sharedMAC$annot),annot=rep("Macrophages",times=length(table(sharedMAC$annot))))
+T=data.frame(table(sharedT$annot),annot=rep("T-lymphocytes",times=length(table(sharedT$annot))))
+ENT=data.frame(table(sharedENT$annot),annot=rep("Enterocytes",times=length(table(sharedENT$annot))))
+GOB=data.frame(table(sharedGOB$annot),annot=rep('Goblet cells',times=length(table(sharedGOB$annot))))
+HEP=data.frame(table(sharedHEP$annot),annot=rep("Hepatocytes",times=length(table(sharedHEP$annot))))
+CARD=data.frame(table(sharedCR$annot),annot=rep("Cardiomyocytes",times=length(table(sharedCR$annot))))
+MYF=data.frame(table(sharedMF$annot),annot=rep("Myofibroblasts",times=length(table(sharedMF$annot))))
+FIB=data.frame(table(sharedFB$annot),annot=rep("Fibroblasts",times=length(table(sharedFB$annot))))
+PN=data.frame(table(sharedPN$annot),annot=rep("Pneumocytes",times=length(table(sharedPN$annot))))
+END=data.frame(table(sharedEND$annot),annot=rep("Endothelial cells",times=length(table(sharedEND$annot))))
+SM=data.frame(table(sharedSM$annot),annot=rep("Smooth Muscle cells",times=length(table(sharedSM$annot))))
+SCH=data.frame(table(sharedSCH$annot),annot=rep("Schwann cells",times=length(table(sharedSCH$annot))))
+all_CMHMM <- rbind(BS,T,MAC,END,SM,CARD,MYF,FIB,END,SM,PN,HEP,GOB,ENT,SCH)
+
+
+names(all_CMHMM)<-c("state","freq","celltype")
+
+chromHMM_sh<-reshape(all_CMHMM, idvar = "state", timevar = "celltype", direction = "wide")
+chromHMM_sh[is.na(chromHMM_sh)]<-0
+row.names(chromHMM_sh)<-chromHMM_sh$state
+chromHMM_sh$state<-NULL
+
+
+
+BS=data.frame(table(mouseB$annot),annot=rep("B-lymphocytes",times=length(table(mouseB$annot))))
+MAC=data.frame(table(mouseMAC$annot),annot=rep("Macrophages",times=length(table(mouseMAC$annot))))
+T=data.frame(table(mouseT$annot),annot=rep("T-lymphocytes",times=length(table(mouseT$annot))))
+ENT=data.frame(table(mouseENT$annot),annot=rep("Enterocytes",times=length(table(mouseENT$annot))))
+GOB=data.frame(table(mouseGOB$annot),annot=rep('Goblet cells',times=length(table(mouseGOB$annot))))
+HEP=data.frame(table(mouseHEP$annot),annot=rep("Hepatocytes",times=length(table(mouseHEP$annot))))
+CARD=data.frame(table(mouseCR$annot),annot=rep("Cardiomyocytes",times=length(table(mouseCR$annot))))
+MYF=data.frame(table(mouseMF$annot),annot=rep("Myofibroblasts",times=length(table(mouseMF$annot))))
+FIB=data.frame(table(mouseFB$annot),annot=rep("Fibroblasts",times=length(table(mouseFB$annot))))
+PN=data.frame(table(mousePN$annot),annot=rep("Pneumocytes",times=length(table(mousePN$annot))))
+END=data.frame(table(mouseEND$annot),annot=rep("Endothelial cells",times=length(table(mouseEND$annot))))
+SM=data.frame(table(mouseSM$annot),annot=rep("Smooth Muscle cells",times=length(table(mouseSM$annot))))
+SCH=data.frame(table(mouseSCH$annot),annot=rep("Schwann cells",times=length(table(mouseSCH$annot))))
+all_CMHMM <- rbind(BS,T,MAC,END,SM,CARD,MYF,FIB,END,SM,PN,HEP,GOB,ENT,SCH)
+names(all_CMHMM)<-c("state","freq","celltype")
+
+chromHMM_m<-reshape(all_CMHMM, idvar = "state", timevar = "celltype", direction = "wide")
+
+chromHMM_m[is.na(chromHMM_m)]<-0
+row.names(chromHMM_m)<-chromHMM_m$state
+chromHMM_m$state<-NULL
+
+
+BS=data.frame(table(humanB$annot),annot=rep("B-lymphocytes",times=length(table(humanB$annot))))
+MAC=data.frame(table(humanMAC$annot),annot=rep("Macrophages",times=length(table(humanMAC$annot))))
+T=data.frame(table(humanT$annot),annot=rep("T-lymphocytes",times=length(table(humanT$annot))))
+ENT=data.frame(table(humanENT$annot),annot=rep("Enterocytes",times=length(table(humanENT$annot))))
+GOB=data.frame(table(humanGOB$annot),annot=rep('Goblet cells',times=length(table(humanGOB$annot))))
+HEP=data.frame(table(humanHEP$annot),annot=rep("Hepatocytes",times=length(table(humanHEP$annot))))
+CARD=data.frame(table(humanCR$annot),annot=rep("Cardiomyocytes",times=length(table(humanCR$annot))))
+MYF=data.frame(table(humanMF$annot),annot=rep("Myofibroblasts",times=length(table(humanMF$annot))))
+FIB=data.frame(table(humanFB$annot),annot=rep("Fibroblasts",times=length(table(humanFB$annot))))
+PN=data.frame(table(humanPN$annot),annot=rep("Pneumocytes",times=length(table(humanPN$annot))))
+END=data.frame(table(humanEND$annot),annot=rep("Endothelial cells",times=length(table(humanEND$annot))))
+SM=data.frame(table(humanSM$annot),annot=rep("Smooth Muscle cells",times=length(table(humanSM$annot))))
+SCH=data.frame(table(humanSCH$annot),annot=rep("Schwann cells",times=length(table(humanSCH$annot))))
+all_CMHMM <- rbind(BS,T,MAC,END,SM,CARD,MYF,FIB,END,SM,PN,HEP,GOB,ENT,SCH)
+
+
+
+
+
+
+names(all_CMHMM)<-c("state","freq","celltype")
+chromHMM_h<-reshape(all_CMHMM, idvar = "state", timevar = "celltype", direction = "wide")
+
+
+chromHMM_h[is.na(chromHMM_h)]<-0
+row.names(chromHMM_h)<-chromHMM_h$state
+chromHMM_h$state<-NULL
+
+
+
+CH1<-Heatmap(scale(chromHMM_sh))
+
+CH2<-Heatmap(scale(chromHMM_m))
+
+CH3<-Heatmap(scale(chromHMM_h))
+
+CH1+CH3+CH2
+
+chmmlist<-list()
+chmmlist[["mouse"]]<-chromHMM_m
+chmmlist[["human"]]<-chromHMM_h
+chmmlist[["shared"]]<-chromHMM_sh
+
+saveRDS(chmmlist,"ChromHMM_res_core.rds")
+
+```
+
+
+
+
+
+
+
+
+
+
+mouse specific sites
+```{r}
+previously_annotated_mouse<-read.delim("/brahms/torkenczyk/H_M_storage/Previously_unannotated_mouse.txt",header = T)
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_mouse_tissues.rds")
+human<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_human_tissues.rds")
+
+mismatched_previously_annot_mouse_cells<-row.names(previously_annotated_mouse)
+mouse_annot_obj<-subset(mouse,cells=mismatched_previously_annot_mouse_cells)
+
+mouse_annot_obj_end<-subset(mouse,cells=row.names(mouse_annot_obj[[]])[mouse_annot_obj$cell_label=="Endothelial II cells"])
+mouse_annot_obj_ent<-subset(mouse,cells=row.names(mouse_annot_obj[[]])[mouse_annot_obj$cell_label=="Enterocytes"])
+CoveragePlot(mouse_annot_obj_end,region = "LOXL2")
+
+TilePlot(mouse_annot_obj_end,region = "LOXL2")
+TilePlot(mouse_annot_obj_end,region = "DCN")
+CoveragePlot(human,region = "DCN")
+CoveragePlot(human,region = "LOXL2")
+
+TilePlot(human,region = "DCN")
+TilePlot(human,region = "DCN")
+
+
+TilePlot(mouse_annot_obj_ent,region = "LOXL2")
+TilePlot(mouse_annot_obj_ent,region = "HEPACAM2")
+TilePlot(mouse_annot_obj_ent,region = "HEPACAM2")
+
+CoveragePlot(human,region = "DCN")
+CoveragePlot(human,region = "LOXL2")
+
+TilePlot(human,region = "DCN")
+TilePlot(human,region = "DCN")
+
+
+
+enmark<-FindAllMarkers(mouse_annot_obj_end,min.pct = 0.01)
+entmark<-FindAllMarkers(mouse_annot_obj_ent,min.pct = 0.01)
+
+
+fbm<-row.names(enmark[enmark$cluster=="Fibroblasts" & enmark$avg_log2FC>0 & enmark$p_val_adj<0.05,])
+gcm<-row.names(entmark[entmark$cluster=="Goblet cells" & entmark$avg_log2FC>0 & entmark$p_val_adj<0.05,])
+gve<-FindMarkers(mouse_annot_obj_ent,ident.2 = "Enterocytes",ident.1 = "Goblet cells",min.pct = 0.01,only.pos = T)
+
+uniqueandda<-intersect(gcm,row.names(gve))
+
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Shared.bw.species.DA.RData")
+
+genes_cons<-intersect(fbm,shared_DA$Fibroblasts$feature_hg38_universal)
+
+a<-ClosestFeature(mouse_annot_obj_end,regions = StringToGRanges(genes_cons))
+
+genes_cons<-intersect(uniqueandda,shared_DA$`Goblet cells`$feature_hg38_universal)
+
+b<-ClosestFeature(mouse_annot_obj_end,regions = StringToGRanges(genes_cons))
+
+#LOXL2,BMP2,DCN,maybe DUSP1
+
+p1<-CoveragePlot(human,region = "DUSP1")
+p2<-TilePlot(mouse_annot_obj_end,region = "DUSP1")
+
+wrap_plots(list(p2,p1),ncol=1,nrow = 2)
+
+p1<-CoveragePlot(human,region = "BMP2")
+p2<-TilePlot(mouse_annot_obj_end,region = "BMP2")
+
+wrap_plots(list(p2,p1),ncol=1,nrow = 2)
+
+human$old_ident<-Idents(human)
+human <- RenameIdents(object = human, 'Myofibroblasts' = "Other" ,'B-lymphocytes'= "Other", 'Enterocytes'= "Other", 'Pneumocytes'= "Other", 'T-lymphocytes'= "Other", 'Goblet cells'= "Other", 'Schwann cells'= "Other", 'Hepatocytes'= "Other", 'Macrophages'= "Other", 'Cardiomyocytes' = "Other")
+
+
+p1<-CoveragePlot(human,region = "DCN")
+
+mouse_annot_obj_end$old_ident<-Idents(mouse_annot_obj_end)
+mouse_annot_obj_end <- RenameIdents(object = mouse_annot_obj_end, 'Myofibroblasts' = "Other" ,'B-lymphocytes'= "Other", 'Enterocytes'= "Other", 'Pneumocytes'= "Other", 'T-lymphocytes'= "Other", 'Goblet cells'= "Other", 'Schwann cells'= "Other", 'Hepatocytes'= "Other", 'Macrophages'= "Other")
+p2<-TilePlot(mouse_annot_obj_end,region = "LOXL2")
+p2b<-CoveragePlot(mouse_annot_obj_end,region = "LOXL2",tile.size = 2)
+wrap_plots(list(p2b,p2,p1),ncol=1,nrow = 3)
+
+p1<-CoveragePlot(human,region = "CEP55")
+p2<-CoveragePlot(mouse_annot_obj_ent,region = "CEP55")
+
+Idents(human)<-human$old_ident
+
+
+human <- RenameIdents(object = human, 'Myofibroblasts' = "Other" ,'B-lymphocytes'= "Other", 'Fibroblasts'= "Other", 'Pneumocytes'= "Other", 'T-lymphocytes'= "Other", 'Smooth muscle cells'= "Other", 'Schwann cells'= "Other", 'Hepatocytes'= "Other", 'Macrophages'= "Other", 'Cardiomyocytes' = "Other","Endothelial cells"= "Other")
+mouse_annot_obj_ent <- RenameIdents(object = mouse_annot_obj_ent, 'Myofibroblasts' = "Other" ,'B-lymphocytes'= "Other", 'Fibroblasts'= "Other", 'Pneumocytes'= "Other", 'T-lymphocytes'= "Other", 'Smooth muscle cells'= "Other", 'Schwann cells'= "Other", 'Hepatocytes'= "Other", 'Macrophages'= "Other", 'Cardiomyocytes' = "Other","Endothelial cells"= "Other")
+
+p1<-CoveragePlot(human,region = "ATOH1",annotation = F,peaks = F,extend.upstream = 5000)
+p2<-CoveragePlot(mouse_annot_obj_ent,region = "ATOH1",extend.upstream = 5000)
+a<-wrap_plots(list(p1,p2),ncol=1,nrow = 2)
+p1b<-CoveragePlot(human,region = "HEPACAM2",extend.upstream = 1000,peaks = F,annotation = F)
+p2b<-CoveragePlot(mouse_annot_obj_ent,region = "HEPACAM2",extend.upstream = 1000)
+a2<-wrap_plots(list(p1,p2,p1b,p2b),ncol=1,nrow = 4)
+
+
+
+```
+
+
+
+
+```{r}
+
+p1<-plot_combined_cross_species(gene = "MYH11",plot_by = "id")
+p2<-plot_combined_cross_species(gene = "PAX5",plot_by = "id")
+p3<-plot_combined_cross_species(gene = "VIL1",plot_by = "id")
+p4<-plot_combined_cross_species(gene = "SFTPB",plot_by = "id")
+
+p5<-plot_combined_cross_species(gene = "IFNG",plot_by = "id")
+p6<-plot_combined_cross_species(gene = "ATP2C2",plot_by = "id")
+p7<-plot_combined_cross_species(gene = "NID1",plot_by = "id")
+p8<-plot_combined_cross_species(gene = "SOX10",plot_by = "id")
+
+A<-wrap_plots(list(p1,p2,p3,p4,p5,p6,p7,p8),ncol=4,nrow = 2)
+
+p9<-plot_combined_cross_species(gene = "ALB",plot_by = "id")
+p10<-plot_combined_cross_species(gene = "CD14",plot_by = "id")
+p11<-plot_combined_cross_species(gene = "ENG",plot_by = "id")
+p12<-plot_combined_cross_species(gene = "MPRIP",plot_by = "id")
+p13<-plot_combined_cross_species(gene = "MYH6",plot_by = "id")
+
+
+A<-wrap_plots(list(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p12,p11,p13),ncol=4,nrow = 4)
+
+a<-plot_combined_cross_species(gene = "NKX-2",plot_by = "id")
+
+```
+
+
+
+
+

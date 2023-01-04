@@ -1,0 +1,577 @@
+---
+title: "R fib analysis"
+output: html_notebook
+---
+
+
+#plotting script
+```{r}
+
+FindRegion(object=human_all_atac,assay = "cre",region = "NKX2-1")
+
+
+  # region can be a string, name of a gene, or GRanges object
+FindRegion <- function(
+  object,
+  region,
+  sep = c("-", "-"),
+  assay = NULL,
+  extend.upstream = 0,
+  extend.downstream = 0
+) {
+  if (!is(object = region, class2 = "GRanges")) {
+    # if separators are present in the string and we can convert the
+    # start to a number, assume we're using genomic coordinates
+    if (all(sapply(X = sep, FUN = grepl, x = region))) {
+      print("here")
+      region <- StringToGRanges(regions = region, sep = sep)
+    } else {
+      region <- LookupGeneCoords(object = object, assay = assay, gene = region)
+      if (is.null(x = region)) {
+        stop("Gene not found")
+      }
+    }
+  }
+  
+  region <- suppressWarnings(expr = Extend(
+    x = region,
+    upstream = extend.upstream,
+    downstream = extend.downstream
+  )
+  )
+  return(region)
+}
+
+col.low = "#08306b"
+col.mid = "#bcbddc"
+col.high = "#67000d"
+
+plot_combined_cross_species<-function(gene,gene_mouse=NULL,upstr=1000,downstr=1000,plot_by="fib_cluster",motif.names=NULL,highlight_human_reg=NULL,highlight_mouse_reg=NULL,validate=F){
+  fname<-substring(gene, 1,1)
+  sname<-substring(gene, 2)
+  if(is.null(gene_mouse)) 
+  {
+  gene_mouse<-paste0(toupper(fname),tolower(sname))
+  }
+  gene_human<-toupper(gene)
+  
+
+
+ # reg_h<-FindRegion(object = human_all_atac,region = gene_human,extend.downstream = downstr,extend.upstream = upstr,assay = "cre")
+#  reg_m<-FindRegion(object = mouse_select_atac,region = gene_mouse,extend.downstream = downstr,extend.upstream = upstr,assay = "mm10")
+  
+  reg_h <- LookupGeneCoords(object = human_all_atac,gene = gene_human,assay = "cre")
+  reg_h <- suppressWarnings(expr = Extend(x = reg_h, upstream = upstr,downstream = downstr))
+  
+  reg_m <- LookupGeneCoords(object = mouse_select_atac,gene = gene_mouse,assay = "mm10")
+  reg_m <- suppressWarnings(expr = Extend(x = reg_m, upstream = upstr,downstream = downstr))
+  
+  
+  
+  #findOverlaps(subject=reg_h,query = highlight_human_reg)
+  
+  print(paste0("plotting gene: ", gene))
+  print(paste0("plotting human: ", gene_human," human: ",reg_h))
+  print(paste0("plotting mouse: ", gene_mouse," mouse: ",reg_m))
+  mm10_phylp="/home/torkenczyk/conservation_tracks/mm10.60way.phyloP60way.bw"
+  hg38_phylp="/home/torkenczyk/conservation_tracks/hg38.phyloP100way.bw"
+  mm10_lecif="/home/torkenczyk/conservation_tracks/mm10.hg38.LECIF.srt.median.bw"
+  hg38_lecif="/home/torkenczyk/conservation_tracks/hg38.mm10.LECIF.srt.median.bw"
+ # conservation_mm10<-BigwigTrack(region = reg_m,bigwig = mm10_phylp,type = 'heatmap')
+  #conservation_hg38<-BigwigTrack(region = reg_h,bigwig = hg38_phylp,type = 'heatmap')
+  
+   
+  if(!is.null(motif.names)){
+  print("Adding Motifs")
+  print("For Hg38")
+  ls<-unlist(GetMotifData(object = human_all_atac, assay = "cre", slot = "motif.names"))
+  motif_labels<-names(ls[match(motif.names,ls)])
+  M<-GetMotifData(human_all_atac, assay = "cre")[,motif_labels]
+  M2<-apply(M,2,function(x){which(x>0)})
+  M2n<-apply(M,2,function(x){which(x==0)})
+
+  
+  Mdf<-data.frame(motifs=rep("",times=length(row.names(M))))
+  M<-as.matrix(M)
+  for (mt in names(M2)){
+    c_ct<-match(mt,colnames(M))
+    mt_n<-ls[match(mt,names(ls))]
+    M[M2[[mt]],c_ct]<-mt_n
+    M[M2n[[mt]],c_ct]<-""
+  }
+  M<-as.data.frame(M)
+  M <- M %>% unite(motif, colnames(M), sep = ',')
+  M$motif<-gsub(M$motif,perl=T,pattern = ",{2,}",replacement = "")
+  M$motif<-gsub(M$motif,perl=T,pattern = "^,",replacement = "")
+  M$motif<-gsub(M$motif,perl=T,pattern = ",$",replacement = "")
+  M$motif[which(M$motif=="")]<-"No motif"
+  
+  human_all_atac[["cre"]]<-AddMetaData(human_all_atac[["cre"]],M)
+  mouse_select_atac[["cre"]]<-AddMetaData(mouse_select_atac[["cre"]],M)
+  
+  print("For MM10")
+  ls<-unlist(GetMotifData(object = mouse_select_atac, assay = "mm10", slot = "motif.names"))
+  motif_labels<-names(ls[match(motif.names,ls)])
+  M<-GetMotifData(mouse_select_atac,assay = "mm10")[,motif_labels]
+  M2<-apply(M,2,function(x){which(x>0)})
+  M2n<-apply(M,2,function(x){which(x==0)})
+  Mdf<-data.frame(motifs=rep("",times=length(row.names(M))))
+  M<-as.matrix(M)
+  for (mt in names(M2)){
+    c_ct<-match(mt,colnames(M))
+    mt_n<-ls[match(mt,names(ls))]
+    M[M2[[mt]],c_ct]<-mt_n
+    M[M2n[[mt]],c_ct]<-""
+  }
+  M<-as.data.frame(M)
+  M <- M %>% unite(motif, colnames(M), sep = ',')
+  M$motif<-gsub(M$motif,perl=T,pattern = ",{2,}",replacement = "")
+  M$motif<-gsub(M$motif,perl=T,pattern = "^,",replacement = "")
+  M$motif<-gsub(M$motif,perl=T,pattern = ",$",replacement = "")
+  #M$motif<-gsub(M$motif,perl=T,pattern = ",No motif$",replacement = "")
+  M$motif[which(M$motif=="")]<-"No motif"
+  mouse_select_atac[["mm10"]]<-AddMetaData(mouse_select_atac[["mm10"]],M)
+  
+  mouse1<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="mm10",
+    group.by=plot_by,
+    region = gene_mouse,
+    annotation=T,peaks=T,
+    extend.upstream = upstr,
+    extend.downstream = downstr,bigwig = list(mm10_phylp,mm10_lecif),bigwig.type = 'heatmap',peaks.group.by = "motif", region.highlight = highlight_mouse_reg
+  )
+  
+  mouse2<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="cre",
+    group.by=plot_by,
+    region = gene_human,
+    annotation=T,peaks=T,
+    extend.upstream = upstr,
+    extend.downstream = downstr,bigwig = list(hg38_phylp,hg38_lecif),bigwig.type = 'heatmap',peaks.group.by = "motif",region.highlight = highlight_human_reg
+  )
+  
+  human<-CoveragePlot(
+    object = human_all_atac, 
+    group.by=plot_by,region = gene_human,assay ="cre",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=T,peaks=T,bigwig = list(hg38_phylp,hg38_lecif),bigwig.type = 'heatmap',peaks.group.by = "motif", region.highlight = highlight_human_reg
+  )
+  
+  
+  } else {
+  
+  
+  mouse1<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="mm10",
+    group.by=plot_by,
+    region = reg_m,
+    annotation=T,peaks=T,
+    extend.upstream = upstr,
+    extend.downstream = downstr,bigwig = list(mm10_phylp,mm10_lecif),bigwig.type = 'heatmap', region.highlight = highlight_mouse_reg
+  )
+  
+  mouse2<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="cre",
+    group.by=plot_by,
+    region = reg_h,
+    annotation=T,peaks=T,
+    extend.upstream = upstr,
+    extend.downstream = downstr,bigwig = list(hg38_phylp,hg38_lecif),bigwig.type = 'heatmap',region.highlight = highlight_human_reg
+  )
+  
+    mouse2b<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="cre",
+    group.by=plot_by,
+    region = reg_h,
+    annotation=F,peaks=F,
+    extend.upstream = upstr,
+    extend.downstream = downstr,region.highlight = highlight_human_reg)
+  
+  human<-CoveragePlot(
+    object = human_all_atac, 
+    group.by=plot_by,region = reg_h,assay ="cre",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=T,peaks=T,bigwig = list(hg38_phylp,hg38_lecif),bigwig.type = 'heatmap',region.highlight = highlight_human_reg
+  )
+  
+  humanb<-CoveragePlot(
+    object = human_all_atac, 
+    group.by=plot_by,region = reg_h,assay ="cre",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=T,peaks=T,bigwig = list(hg38_A549_a,hg38_A549_b,hg38_A549_c),bigwig.type = "coverage",region.highlight = highlight_human_reg
+  )
+ 
+  }
+  
+  
+    plots2<-wrap_plots(list(mouse2b,human), ncol = 1, heights = c(8,10))
+    print(paste0("plotting gene: ", gene))
+    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons_yaxe2.png"),width = 20,height=18,units = "cm",res=300)
+    print(plots2)
+    dev.off()
+    ggsave(plot = plots2,filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/",gene,"_combined.wcons_yaxe.pdf"),width = 10,height=18,units = "cm")
+    print("THIS")
+    plots<-wrap_plots(list(mouse1,mouse2,human), ncol = 3, widths  = c(10,10,10))
+    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons2.png"),width = 30,height=25,units = "cm",res=300)
+    print(wrap_plots(list(mouse1,mouse2,human), ncol = 3, widths  = c(10,10,10)))
+    dev.off()
+    
+    
+    
+    if (validate==T){
+    #with mouse
+      print("Plotting validation of mouse")
+    DefaultAssay(M_subset)<-"peaks"
+    
+    mouse2c<-CoveragePlot(
+    object = M_subset,links = F,assay ="peaks",
+    group.by="cell_type",
+    region = reg_m,
+    annotation=F,peaks=F,
+    extend.upstream = upstr,
+    extend.downstream = downstr,region.highlight = highlight_mouse_reg)
+    plots3<-wrap_plots(list(mouse2c,mouse1), ncol = 1, heights = c(8,10))
+    
+    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons_yaxe_mouse_VAL.png"),width = 20,height=18,units = "cm",res=300)
+    print(plots3)
+    dev.off()
+    
+    #with human
+    
+    print("Plotting validation of human")
+    DefaultAssay(integrated)<-"bins"
+    
+    human_v<-CoveragePlot(object = integrated, 
+    group.by="cluster_name",region = reg_h,assay ="bins",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=F,peaks=F,region.highlight = highlight_human_reg)
+   
+    plots4<-wrap_plots(list(human_v,humanb), ncol = 1, heights = c(8,14))
+    print("THIS")
+    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/plots/",gene,"_combined.wcons_yaxe_human_VAL.png"),width = 20,height=28,units = "cm",res=300)
+    print(plots4)
+    dev.off()
+    print("THIS2")
+    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons_yaxe_human_VAL.png"),width = 20,height=28,units = "cm",res=300)
+    print(plots4)
+    dev.off()
+    
+    }
+    
+   return(plots2)
+}
+
+
+```
+
+
+
+Internal functions
+```{r}
+corrected_reads<-function(object,assay,regions,group_name,species=NULL,min=-3,mid=0,max=3){
+
+list_of_plots=list()
+  
+if(is.null(species)) {
+species=c("mouse","human")
+}
+object_use=object
+#lets look at corrected accessibility
+  
+require(ComplexHeatmap)  
+require(scales)  
+require(circlize)  
+ 
+if(is.character(regions)){
+str_test=regions
+gr_test=StringToGRanges(regions)
+}else
+{
+gr_test=regions
+str_test=GRangesToString(regions)
+}
+
+for (sp in species){
+#name of a factor in the object
+print(sp)
+object_sub<-subset(object_use,subset = species == paste0(sp))
+groups<-as.factor(object_sub[[]][,group_name])
+print("got here")
+
+C<-GetAssayData(object_sub,slot = "counts",assay = assay)[str_test,]
+C<-as.matrix((C > 0) + 0)
+#aggregate
+Cagg<-aggregate(t(C),by=list(groups),FUN = function(x){sum(x)/length(x)})
+Cagg2<-as.data.frame(t(Cagg))
+colnames(Cagg2)<-Cagg2[1,]
+Cagg2<-Cagg2[-1,]
+#turn everything into numeric
+Cagg2[] <- lapply(Cagg2, function(x) {
+   as.numeric(as.character(x))
+})
+#at this point we have the probability of accessibility for each cluster. To adjust for complexity we have to calculate the median number of sites accessible in each cluster we take the average of this and divide them by individual groups ()
+
+median_nfeature_category<-aggregate(as.data.frame(object_sub$nFeature_peaks),by=list(groups),FUN=median)
+
+median_nfeature_category$norm_complexity<-mean(log10(median_nfeature_category$`object_sub$nFeature_peaks`))/log10(median_nfeature_category$`object_sub$nFeature_peaks`)
+norm_factor<-as.data.frame(median_nfeature_category$norm_complexity)
+row.names(norm_factor)<-median_nfeature_category$Group.1
+t(norm_factor)
+
+temp<-apply(Cagg2,MARGIN = 1,FUN = function(x){data.frame(x*t(norm_factor))})
+Cagg2<-ldply(temp, data.frame)
+row.names(Cagg2)<-Cagg2$.id
+Cagg2$.id<-NULL
+
+plot_matrix<-as.matrix(Cagg2)
+
+col.low = "#08306b"
+col.mid = "#bcbddc"
+col.high = "#67000d"
+
+col_fun = colorRamp2(c(min, mid, max), c(col.low, col.mid, col.high))
+H<-Heatmap(scale(plot_matrix,center = T,scale = T),show_column_names = T,show_row_names = F,cluster_rows = F,col=col_fun,cluster_columns = F)
+list_of_plots[[paste0(sp)]]=H
+}
+
+
+return(list_of_plots)
+
+
+}
+
+col_fun = colorRamp2(c(-5,0,5), c("#08306b", "#bcbddc" ,"#67000d"))
+
+```
+
+
+```{r}
+library(Seurat)
+library(Signac)
+integrated_H_M<-readRDS(file="/brahms/torkenczyk/H_M_storage/analysis/objects/Final_integration_all_bins_CCA_remove_removed.rds")
+
+
+
+
+cellsF<-names(Idents(integrated_H_M)[Idents(integrated_H_M)=="Fibroblasts"])
+cellsMF<-names(Idents(integrated_H_M)[Idents(integrated_H_M)=="Myofibroblasts"])
+
+integrated_H_M<-subset(integrated_H_M,cells=c(cellsF,cellsMF))
+integrated_H_M_fib <- RunUMAP(object = integrated_H_M, reduction = 'integrated_dr', dims = 1:100)
+
+
+tissue_corr<-integrated_H_M_fib[["tissue"]]
+tissue_corr$tissue[is.na(tissue_corr$tissue)]<-"unknown"
+tissue_corr$tissue<-as.factor(tissue_corr$tissue)
+
+
+levels(tissue_corr$tissue)<-c("Large intestine","Large intestine","Heart","Heart","Large intestine","Liver","Liver","Lung","Lung","Small intestine","Small intestine","unknown")
+
+tissue_corr<-as.data.frame(tissue_corr)
+
+
+integrated_H_M_fib<-AddMetaData(integrated_H_M_fib,tissue_corr)
+
+
+DimPlot(integrated_H_M_fib,group.by = "tissue",split.by = "species",raster=F,label = TRUE)
+
+DimPlot(integrated_H_M_fib,group.by = "tissue.replicate",split.by = "species",raster=F,label = TRUE)
+DimPlot(integrated_H_M_fib,group.by = "Abbreviation",split.by = "species",raster=F,label = TRUE)
+
+DimPlot(integrated_H_M_fib,group.by = "Abbreviation",split.by = "species",raster=F,label = TRUE)
+
+integrated_H_M_fib <- FindNeighbors(integrated_H_M_fib, dims = 1:100,reduction = "integrated_dr")
+integrated_H_M_fib <- FindClusters(integrated_H_M_fib, resolution = 0.7)
+
+DimPlot(integrated_H_M_fib,split.by = "species",raster=F,label = TRUE)
+
+hm<-na.omit(data.frame(clusters=integrated_H_M_fib$humanPeaks_snn_res.0.7,human_cluster=integrated_H_M_fib$Abbreviation))
+hm2<-table(hm$clusters,hm$human_cluster)
+
+abundance<-matrix(hm2,ncol = ncol(hm2), dimnames = dimnames(hm2))
+
+Heatmap(abundance,cell_fun = function(j, i, x, y, width, height, fill) {grid.text(sprintf("%i", abundance[i, j]), x, y, gp = gpar(fontsize = 10))})
+
+
+integrated_H_M_fib$fib_cluster<-integrated_H_M_fib$humanPeaks_snn_res.0.7
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('3') = 'Myofibroblast'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('6') = 'Myofibroblast'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('5') = 'Myofibroblast'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('7') = 'Myofibroblast'")
+
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('4') = 'Fibroblast 3'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('9') = 'Fibroblast 3'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('8') = 'Fibroblast 3'")
+
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('2') = 'Fibroblast 4'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('10') = 'Fibroblast 4'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('11') = 'Fibroblast 4'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('13') = 'Fibroblast 4'")
+
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('12') = 'Fibroblast 5'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('1') = 'Fibroblast 5'")
+integrated_H_M_fib@meta.data$fib_cluster <- car::recode(integrated_H_M_fib@meta.data$fib_cluster, "c('0') = 'Fibroblast 1,2'")
+
+Idents(integrated_H_M_fib)<-integrated_H_M_fib$fib_cluster
+
+unint_merged<-merge(human,mouse)
+Idents(unint_merged)<-unint_merged$fib_cluster
+
+marker_3<-FindConservedMarkers(unint_merged,ident.1 = "Fibroblast 3",grouping.var = "species",min.pct = 0.01,assay = "cre",logfc.threshold = 0.05)
+fib3 <-marker_3[marker_3$human_avg_log2FC>0 & marker_3$mouse_avg_log2FC>0,]
+marker_4<-FindConservedMarkers(unint_merged,ident.1 = "Fibroblast 4",grouping.var = "species",min.pct = 0.01,assay = "cre",logfc.threshold = 0.05)
+fib4 <-marker_4[marker_4$human_avg_log2FC>0 & marker_4$mouse_avg_log2FC>0,]
+marker_12<-FindConservedMarkers(unint_merged,ident.1 = "Fibroblast 1,2",grouping.var = "species",min.pct = 0.01,assay = "cre",logfc.threshold = 0.05)
+fib12 <-marker_12[marker_12$human_avg_log2FC>0 & marker_12$mouse_avg_log2FC>0,]
+marker_5<-FindConservedMarkers(unint_merged,ident.1 = "Fibroblast 5",grouping.var = "species",min.pct = 0.01,assay = "cre",logfc.threshold = 0.05)
+fib5 <-marker_5[marker_5$human_avg_log2FC>0 & marker_5$mouse_avg_log2FC>0,]
+marker_mf<-FindConservedMarkers(unint_merged,ident.1 = "Myofibroblast",grouping.var = "species",min.pct = 0.01,assay = "cre",logfc.threshold = 0.05)
+mf <-marker_mf[marker_mf$human_avg_log2FC>0 & marker_mf$mouse_avg_log2FC>0,]
+
+a<-corrected_reads(object = unint_merged,regions = c(row.names(fib12),row.names(fib3),row.names(fib4),row.names(fib5),row.names(mf)),group_name = "fib_cluster",assay = "cre")
+
+a<-ClosestFeature(integrated_H_M_fib,regions = c(row.names(fib12),row.names(fib3),row.names(fib4),row.names(fib5),row.names(mf)))
+
+human_all_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
+mouse_select_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+
+meta_fib<-integrated_H_M_fib[["fib_cluster"]]
+meta_fib$cellnames<-colnames(human_all_atac)[match(row.names(meta_fib),human_all_atac$second)]
+
+#remove duplicated stuff
+meta_fib<-meta_fib[!duplicated(meta_fib$cellnames),]
+#remove 
+meta_fib_hum<-na.omit(meta_fib)
+
+
+row.names(meta_fib_hum)<-meta_fib_hum$cellnames
+
+meta_fib<-integrated_H_M_fib[["fib_cluster"]]
+meta_fib$cellnames<-colnames(mouse_select_atac)[match(colnames(integrated_H_M_fib),colnames(mouse_select_atac))]
+meta_fib_mouse<-na.omit(meta_fib)
+row.names(meta_fib_mouse)<-meta_fib_mouse$cellnames
+
+
+
+human_all_atac<-subset(human_all_atac,cells = row.names(meta_fib_hum))
+mouse_select_atac<-subset(mouse_select_atac,cells = row.names(meta_fib_mouse))
+human_all_atac<-AddMetaData(human_all_atac,metadata = meta_fib_hum)
+mouse_select_atac<-AddMetaData(mouse_select_atac,metadata = meta_fib_mouse)
+
+
+res<-FindMarkers(human_all_atac,ident.1 = "JF1NY",ident.2 = "IOBHO",group.by = "ID1",logfc.threshold = 0.01,test="LR",latent.vars = "nCount_peaks")
+
+ClosestFeature(human_all_atac,regions = head(row.names(res),n = 5))
+p3marka<-plot_combined_cross_species(gene = "ZBTB20",plot_by = "ID1")
+
+res2<-FindMarkers(human_all_atac,ident.1 = "",logfc.threshold = 0.01,group.by = "fib_cluster"],test="LR",latent.vars = "nCount_peaks")
+
+
+p3marka<-plot_combined_cross_species(gene = "GATA4",plot_by = "fib_cluster")
+p3markb<-plot_combined_cross_species(gene = "TBX20",plot_by = "fib_cluster")
+
+
+
+#cardiac fibroblasts, clear signiture
+fib3mark<-ClosestFeature(integrated_H_M_fib,regions = c(row.names(fib3)))
+fib4mark<-ClosestFeature(integrated_H_M_fib,regions = c(row.names(fib4)))
+p4marka<-plot_combined_cross_species(gene = "CXCL14",plot_by = "fib_cluster")
+p4markb<-plot_combined_cross_species(gene = "TBX2",plot_by = "fib_cluster")
+p4markc<-plot_combined_cross_species(gene = "GRK5",plot_by = "fib_cluster")
+
+mf<-ClosestFeature(integrated_H_M_fib,regions = c(row.names(marker_mf)))
+
+mfmark1<-plot_combined_cross_species(gene = "ACTG2",plot_by = "fib_cluster")
+#mfmark2<-plot_combined_cross_species(gene = "ACTA2",plot_by = "fib_cluster")
+mfmark3<-plot_combined_cross_species(gene = "SMTN",plot_by = "fib_cluster")
+
+human_all_atac<-FindMarkers(object = df,min.pct =0.01,test.use = )
+
+pa<-DimPlot(integrated_H_M_fib,split.by = "species",label=T)+NoLegend()
+pb<-DimPlot(integrated_H_M_fib,group.by = "ID1",split.by = "species",label=T)+NoLegend()
+pc<-DimPlot(integrated_H_M_fib,group.by = "tissue",split.by = "species",label=T)+NoLegend()
+pd<-DimPlot(integrated_H_M_fib,group.by = "tissue.replicate",split.by = "species",label=T)+NoLegend()
+
+wrap_plots(list(pa,pb,pc),ncol = 1)
+
+
+integrated_H_M_fib<-FindSubCluster(integrated_H_M_fib, cluster = "Fibroblast 3", graph.name = "humanPeaks_snn", resolution = 0.05, algorithm = 3, subcluster.name = "fib_sub.cluster")
+
+pa<-pa+ scale_color_brewer(palette = "Dark2")
+
+
+meta_fib<-integrated_H_M_fib[["fib_sub.cluster"]]
+meta_fib$cellnames<-colnames(human_all_atac)[match(row.names(meta_fib),human_all_atac$second)]
+
+#remove duplicated stuff
+meta_fib<-meta_fib[!duplicated(meta_fib$cellnames),]
+#remove 
+meta_fib_hum<-na.omit(meta_fib)
+
+
+row.names(meta_fib_hum)<-meta_fib_hum$cellnames
+
+meta_fib<-integrated_H_M_fib[["fib_sub.cluster"]]
+meta_fib$cellnames<-colnames(mouse_select_atac)[match(colnames(integrated_H_M_fib),colnames(mouse_select_atac))]
+meta_fib_mouse<-na.omit(meta_fib)
+row.names(meta_fib_mouse)<-meta_fib_mouse$cellnames
+
+
+unint_merged<-AddMetaData(unint_merged,metadata = rbind(meta_fib_hum,meta_fib_mouse))
+human_all_atac<-AddMetaData(human_all_atac,metadata = meta_fib_hum)
+mouse_select_atac<-AddMetaData(mouse_select_atac,metadata = meta_fib_mouse)
+
+
+
+Idents(unint_merged)<-"fib_sub.cluster"
+
+res_fib3<-FindConservedMarkers(unint_merged,ident.1 = "Fibroblast 3_0",ident.2 = "Fibroblast 3_1",grouping.var = "species",logfc.threshold = 0.01,assay = "cre")
+fib3mark_two<-ClosestFeature(integrated_H_M_fib,regions = c(row.names(res_fib3)))
+p_batch<-plot_combined_cross_species(gene = "AP2A1",plot_by = "fib_sub.cluster")
+p_batch2<-plot_combined_cross_species(gene = "CNOT2",plot_by = "fib_sub.cluster")
+p_batch3<-plot_combined_cross_species(gene = "JUN",plot_by = "fib_sub.cluster")
+p_batch4<-plot_combined_cross_species(gene = "JUND",plot_by = "fib_sub.cluster")
+
+Idents(unint_merged)<-"humanPeaks_snn_res.0.7"
+res_fib5_sep<-FindConservedMarkers(unint_merged,ident.1 = "12",grouping.var = "species",logfc.threshold = 0.01,assay = "cre")
+res_fib5_alone<-FindMarkers(human_all_atac,ident.1 = "12",logfc.threshold = 0.01,assay = "cre",group.by = "humanPeaks_snn_res.0.7")
+res_fib5_marks<-ClosestFeature(integrated_H_M_fib,regions = c(row.names(res_fib5_sep)))
+res_fib5_marks2<-ClosestFeature(integrated_H_M_fib,regions = c(row.names(res_fib5_alone)))
+p_batch5<-plot_combined_cross_species(gene = "HAND1",plot_by = "humanPeaks_snn_res.0.7")
+p_batch5b<-plot_combined_cross_species(gene = "SPRY4",plot_by = "humanPeaks_snn_res.0.7")
+
+
+
+
+res_fib3_id<-res
+
+
+
+
+# lets see if I can ID some human specific vs mouse specific things
+
+
+h1=FindMarkers(human_all_atac,only.pos = T,ident.1 = "Fibroblast 3",group.by = "fib_cluster",logfc.threshold = 0.01,test.use = "LR",min.pct = 0.01,assay = "cre")
+h2=FindMarkers(mouse_select_atac,only.pos = T,ident.1 = "Fibroblast 3",group.by = "fib_cluster",logfc.threshold = 0.01,test.use = "LR",min.pct = 0.05,assay = "cre")
+h_all<-merge(h1,h2,by="row.names",all=T)
+ h_all$p_val_adj.x[is.na(h_all$p_val_adj.x)]<-1
+ h_all$p_val_adj.y[is.na(h_all$p_val_adj.y)]<-1
+ 
+  h_all$avg_log2FC.x[is.na(h_all$avg_log2FC.x)]<-0
+ h_all$avg_log2FC.y[is.na(h_all$avg_log2FC.y)]<-0
+ 
+h_all$rank_m<-rank(h_all$avg_log2FC.x-h_all$avg_log2FC.y)
+h_all$rank_h<-rank(h_all$avg_log2FC.y-h_all$avg_log2FC.x)
+
+ClosestFeature(integrated_H_M_fib,regions = head(h_all[order(h_all$rank_h,decreasing = F),]$Row.names,n=100))
+
+#tried to look at it with cistopic as well. Didn't really work that well.
+
+mfmark3_human<-plot_combined_cross_species(gene = "CLEC14A",plot_by = "fib_cluster")
+mfmark3_human2<-plot_combined_cross_species(gene = "NRXN1",plot_by = "fib_cluster")
+
+mfmark3_mouse<-plot_combined_cross_species(gene = "CREB3L2",plot_by = "fib_cluster")
+
+
+```
+

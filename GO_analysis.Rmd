@@ -1,0 +1,670 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+#go ontology analysis we ended up doing the analysis with 10k, but 1k shows similar results
+```{r}
+
+#GREAT
+library(rGREAT)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+load(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/for_rahul/Shared.bw.species.DA.RData")
+load(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/for_rahul/Human_only.bw.species.DA.RData")
+load(file = "/brahms/torkenczyk/H_M_storage/analysis/objects/for_rahul/Mouse_only.bw.species.DA.RData")
+
+human_all_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_human_tissues.rds")
+mouse_select_atac<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_mouse_tissues.rds")
+
+
+
+#you can do 10k or 1k 
+
+
+
+human_10k_da<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Human_sites_10k.rds")
+mouse_10k_da<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Mouse_sites_10k.rds")
+int_10k_da<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Shared_sites_10k.rds")
+
+
+
+
+GO_DA <- function (input_peaks,background_peaks=NULL,genome="hg38")
+{
+if (is.null(background_peaks)){
+job = submitGreatJob(input_peaks, species = genome) 
+} else
+{
+job = submitGreatJob(input_peaks, species = genome,bg=background_peaks)
+}
+tb = getEnrichmentTables(job)
+return(tb)
+}
+
+DefaultAssay(human_all_atac)<-"cre"
+
+bp=sort(StringToGRanges(row.names(human_all_atac)))
+DefaultAssay(mouse_select_atac)<-"mm9"
+bp2=sort(StringToGRanges(row.names(mouse_select_atac)))
+DefaultAssay(mouse_select_atac)<-"cre"
+GO_enrichlist_int<-list()
+GO_enrichlist_h<-list()
+GO_enrichlist_m<-list()
+GO_enrichlist_m2<-list()
+for (i in (names(human_10k_da))){
+print(i)
+#clusth<-StringToGRanges(unique(GRangesToString(sort(StringToGRanges(human_DA[[i]]$feature_hg38_universal)))))
+clusth<-StringToGRanges(unique(GRangesToString(sort(StringToGRanges(human_10k_da[[i]])))))
+
+
+#clustm<-StringToGRanges(unique(GRangesToString(sort(StringToGRanges(mouse_DA[[i]]$feature_hg38_universal)))))
+clustm<-StringToGRanges(unique(GRangesToString(sort(StringToGRanges(mouse_10k_da[[i]])))))
+
+#clustm2<-StringToGRanges(unique(GRangesToString(sort(StringToGRanges(mouse_DA[[i]]$feature_mm9_mouse)))))
+
+
+
+
+#intersected<-StringToGRanges(unique(GRangesToString(sort(StringToGRanges(shared_DA[[i]]$feature_hg38_universal)))))
+intersected<-StringToGRanges(unique(GRangesToString(sort(StringToGRanges(int_10k_da[[i]])))))
+
+sum(seqlengths(human_all_atac)[as.character(seqnames(intersected))]<end(intersected))
+sum(seqlengths(human_all_atac)[as.character(seqnames(clustm))]<end(clustm))
+sum(seqlengths(human_all_atac)[as.character(seqnames(clusth))]<end(clusth))
+#DefaultAssay(mouse_select_atac)<-"mm9"
+#sum(seqlengths(mouse_select_atac)[as.character(seqnames(clustm2))]<end(clustm2))
+
+
+
+GO_enrichlist_int[[i]]<-GO_DA(input_peaks = intersected,background_peaks = bp,genome = "hg38")
+GO_enrichlist_h[[i]]<-GO_DA(input_peaks = clusth,background_peaks = bp,genome = "hg38")
+GO_enrichlist_m[[i]]<-GO_DA(input_peaks = clustm,background_peaks = bp,genome = "hg38")
+
+#GO_enrichlist_m2[[i]]<-GO_DA(input_peaks = clustm2,background_peaks = bp2,genome = "mm9")
+
+}
+
+save(GO_enrichlist_m, file="/brahms/torkenczyk/H_M_storage/GO_enrichlist_m_latest_10k_hg38.RData")
+#save(GO_enrichlist_m2, file="/brahms/torkenczyk/H_M_storage/GO_enrichlist_m_mm9_latest.RData")
+save(GO_enrichlist_h, file="/brahms/torkenczyk/H_M_storage/GO_enrichlist_h_latest_10k.RData")
+save(GO_enrichlist_int, file="/brahms/torkenczyk/H_M_storage/GO_enrichlis_int_latest_10k.RData")
+
+load(file="/brahms/torkenczyk/H_M_storage/GO_enrichlist_m_mm9_latest.RData")
+load(file="/brahms/torkenczyk/H_M_storage/GO_enrichlist_m_latest.RData")
+load(file="/brahms/torkenczyk/H_M_storage/GO_enrichlist_h_latest.RData")
+load(file="/brahms/torkenczyk/H_M_storage/GO_enrichlis_int_latest.RData")
+
+
+mouse[['RNAmm10']] <- CreateAssayObject(counts = gene.activities_mm10)
+mouse <- NormalizeData(
+  object = mouse,
+  assay = 'RNAmm10',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(mouse$nCount_RNAmm10)
+)
+
+saveRDS(human,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
+saveRDS(mouse,"/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+
+
+ont<-availableOntologies(job)
+#hg38
+GobioPCM<-data.frame(annot=GO_enrichlist_m$Cardiomyocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$Cardiomyocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Cardiomyocytes",times=length(GO_enrichlist_m$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioPnmc<-data.frame(annot=GO_enrichlist_m$Pneumocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$Pneumocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$Pneumocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Pneumocytes",times=length(GO_enrichlist_m$Pneumocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioMFb<-data.frame(annot=GO_enrichlist_m$Myofibroblasts$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$Myofibroblasts$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$Myofibroblasts$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Myofibroblasts",times=length(GO_enrichlist_m$Myofibroblasts$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioBcls<-data.frame(annot=GO_enrichlist_m$`B-lymphocytes`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$`B-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$`B-lymphocytes`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("B-lymphocytes",times=length(GO_enrichlist_m$`B-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobioendo<-data.frame(annot=GO_enrichlist_m$`Endothelial cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$`Endothelial cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$`Endothelial cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Endothelial cells",times=length(GO_enrichlist_m$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioSW<-data.frame(annot=GO_enrichlist_m$`Schwann cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$`Schwann cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$`Schwann cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Schwann cells",times=length(GO_enrichlist_m$`Schwann cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobioent<-data.frame(annot=GO_enrichlist_m$Enterocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$Enterocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$Enterocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Enterocytes",times=length(GO_enrichlist_m$Enterocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobigob<-data.frame(annot=GO_enrichlist_m$`Goblet cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$`Goblet cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$`Goblet cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Goblet cells",times=length(GO_enrichlist_m$`Goblet cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobifib<-data.frame(annot=GO_enrichlist_m$Fibroblasts$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$Fibroblasts$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$Fibroblasts$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Fibroblasts",times=length(GO_enrichlist_m$Fibroblasts$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiHep<-data.frame(annot=GO_enrichlist_m$Hepatocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$Hepatocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Hepatocytes",times=length(GO_enrichlist_m$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiMAC<-data.frame(annot=GO_enrichlist_m$Macrophages$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$Macrophages$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$Macrophages$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Macrophages",times=length(GO_enrichlist_m$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiSM<-data.frame(annot=GO_enrichlist_m$`Smooth muscle cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$`Smooth muscle cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$`Smooth muscle cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Smooth muscle cells",times=length(GO_enrichlist_m$`Smooth muscle cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiT<-data.frame(annot=GO_enrichlist_m$`T-lymphocytes`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m$`T-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m$`T-lymphocytes`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("T-lymphocytes",times=length(GO_enrichlist_m$`T-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH)))
+
+
+#make matrix with these
+
+
+Gobio_m<-rbind(GobioMFb,GobioBcls,Gobioent,GobioPnmc,GobiT,Gobigob,Gobifib,GobioSW,GobiHep,GobiMAC,GobiSM,Gobioendo,GobioPCM)
+Gobio_m$ln10Pval=-log10(Gobio_m$Hyper_Adjp_BH)
+
+MMAT<-acast(Gobio_m,annot~Celltype, value.var="ln10Pval")
+
+MMAT<-MMAT[rowSums(MMAT>2)!=0,]
+MMAT<-t(scale(t(MMAT)))
+Heatmap(MMAT,show_row_names = F,show_column_names = T,cluster_rows = T,cluster_columns = T)
+write.table(MMAT,file="/brahms/torkenczyk/H_M_storage/analysis/go/Mouse_DA_sites_go_zscored_mat_1k.txt",quote = F,sep="\t",col.names = T)
+
+
+Gobio$Celltype<-factor(Gobio$Celltype, levels = c("Cardiomyocytes","Endothelial cells","Smooth muscle cells","Macrophages","Hepatocytes","Schwann cells","Fibroblasts","Goblet cells","T-lymphocytes","Pneumocytes","Enterocytes","B-lymphocytes","Myofibroblasts"))
+Gobio$annot2<-paste0(paste0(Gobio$annot,"_",Gobio$Celltype))
+Gobio$annot2<-factor(Gobio$annot2,levels=rev(Gobio$annot2))
+
+
+pmhg38<- ggplot(data = Gobio,aes(color = Celltype,fill = Hyper_Fold_Enrichment, x = annot2,y=-log10(Hyper_Adjp_BH))) +
+    geom_bar(stat = "identity") +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))+scale_fill_gradientn(colors=colorPal(10))
+
+
+#mm9
+GobioPCM<-data.frame(annot=GO_enrichlist_m2$Cardiomyocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$Cardiomyocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Cardiomyocytes",times=length(GO_enrichlist_m2$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioPnmc<-data.frame(annot=GO_enrichlist_m2$Pneumocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$Pneumocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$Pneumocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Pneumocytes",times=length(GO_enrichlist_m2$Pneumocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioMFb<-data.frame(annot=GO_enrichlist_m2$Myofibroblasts$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$Myofibroblasts$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$Myofibroblasts$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Myofibroblasts",times=length(GO_enrichlist_m2$Myofibroblasts$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioBcls<-data.frame(annot=GO_enrichlist_m2$`B-lymphocytes`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$`B-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$`B-lymphocytes`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("B-lymphocytes",times=length(GO_enrichlist_m2$`B-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobioendo<-data.frame(annot=GO_enrichlist_m2$`Endothelial cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$`Endothelial cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$`Endothelial cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Endothelial cells",times=length(GO_enrichlist_m2$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioSW<-data.frame(annot=GO_enrichlist_m2$`Schwann cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$`Schwann cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$`Schwann cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Schwann cells",times=length(GO_enrichlist_m2$`Schwann cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobioent<-data.frame(annot=GO_enrichlist_m2$Enterocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$Enterocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$Enterocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Enterocytes",times=length(GO_enrichlist_m2$Enterocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobigob<-data.frame(annot=GO_enrichlist_m2$`Goblet cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$`Goblet cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$`Goblet cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Goblet cells",times=length(GO_enrichlist_m2$`Goblet cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobifib<-data.frame(annot=GO_enrichlist_m2$Fibroblasts$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$Fibroblasts$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$Fibroblasts$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Fibroblasts",times=length(GO_enrichlist_m2$Fibroblasts$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiHep<-data.frame(annot=GO_enrichlist_m2$Hepatocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$Hepatocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Hepatocytes",times=length(GO_enrichlist_m2$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiMAC<-data.frame(annot=GO_enrichlist_m2$Macrophages$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$Macrophages$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$Macrophages$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Macrophages",times=length(GO_enrichlist_m2$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiSM<-data.frame(annot=GO_enrichlist_m2$`Smooth muscle cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$`Smooth muscle cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$`Smooth muscle cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Smooth muscle cells",times=length(GO_enrichlist_m2$`Smooth muscle cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiT<-data.frame(annot=GO_enrichlist_m2$`T-lymphocytes`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_m2$`T-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_m2$`T-lymphocytes`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("T-lymphocytes",times=length(GO_enrichlist_m2$`T-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH)))
+
+
+
+Gobio_m2<-rbind(GobioMFb,GobioBcls,Gobioent,GobioPnmc,GobiT,Gobigob,Gobifib,GobioSW,GobiHep,GobiMAC,GobiSM,Gobioendo,GobioPCM)
+Gobio_m2$ln10Pval=-log10(Gobio_m2$Hyper_Adjp_BH)
+
+MMAT2<-acast(Gobio_m2,annot~Celltype, value.var="ln10Pval")
+
+MMAT2<-MMAT2[rowSums(MMAT2>2)!=0,]
+MMAT2<-t(scale(t(MMAT2)))
+Heatmap(MMAT2,show_row_names = F,show_column_names = T,cluster_rows = T,cluster_columns = T)
+write.table(MMAT2,file="/brahms/torkenczyk/H_M_storage/analysis/go/Mouse_DA_sites_go_zscored_mat_1k_mm9.txt",quote = F,sep="\t",col.names = T)
+
+
+
+
+Gobio<-rbind(head(GobioMFb,n=5),head(GobioBcls,n=5),head(Gobioent,n=5),head(GobioPnmc,n=5),head(GobiT,n=5),head(Gobigob,n=5),head(Gobifib,n=5),head(GobioSW,n=5),head(GobiHep,n=5),head(GobiMAC,n=5),head(GobiSM,n=5),head(Gobioendo,n=5),head(GobioPCM,n=5))
+
+Gobio_top5names_m<-Gobio$annot
+
+
+Gobio$Celltype<-factor(Gobio$Celltype, levels = c("Cardiomyocytes","Endothelial cells","Smooth muscle cells","Macrophages","Hepatocytes","Schwann cells","Fibroblasts","Goblet cells","T-lymphocytes","Pneumocytes","Enterocytes","B-lymphocytes","Myofibroblasts"))
+Gobio$annot2<-paste0(paste0(Gobio$annot,"_",Gobio$Celltype))
+Gobio$annot2<-factor(Gobio$annot2,levels=rev(Gobio$annot2))
+
+write.table(Gobio,file="/brahms/torkenczyk/H_M_storage/analysis/go/Mouse_DA_sites_go_latest_1k_mm9.txt",quote = F,sep="\t",col.names = T)
+
+
+  col.low = "#08306b"
+  col.mid = "#bcbddc"
+  col.high = "#67000d"
+  
+  
+
+  colorPal <- grDevices::colorRampPalette(c(col.low, col.mid, col.high))
+pm <- ggplot(data = Gobio, mapping = aes_string(x = 'Celltype', y = 'annot2')) +
+    geom_point(mapping = aes_string(size = 'Hyper_Fold_Enrichment', color = 'Hyper_Adjp_BH')) +
+    scale_colour_gradientn(colors=colorPal(10)) +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))
+
+pm2<- ggplot(data = Gobio,aes(color = Celltype,fill = Hyper_Fold_Enrichment, x = annot2,y=-log10(Hyper_Adjp_BH))) +
+    geom_bar(stat = "identity") +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))+scale_fill_gradientn(colors=colorPal(10))
+
+#now intersected
+
+
+GobioPCM<-data.frame(annot=GO_enrichlist_int$Cardiomyocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$Cardiomyocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Cardiomyocytes",times=length(GO_enrichlist_int$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioPnmc<-data.frame(annot=GO_enrichlist_int$Pneumocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$Pneumocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$Pneumocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Pneumocytes",times=length(GO_enrichlist_int$Pneumocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioMFb<-data.frame(annot=GO_enrichlist_int$Myofibroblasts$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$Myofibroblasts$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$Myofibroblasts$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Myofibroblasts",times=length(GO_enrichlist_int$Myofibroblasts$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioBcls<-data.frame(annot=GO_enrichlist_int$`B-lymphocytes`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$`B-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$`B-lymphocytes`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("B-lymphocytes",times=length(GO_enrichlist_int$`B-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobioendo<-data.frame(annot=GO_enrichlist_int$`Endothelial cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$`Endothelial cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$`Endothelial cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Endothelial cells",times=length(GO_enrichlist_int$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioSW<-data.frame(annot=GO_enrichlist_int$`Schwann cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$`Schwann cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$`Schwann cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Schwann cells",times=length(GO_enrichlist_int$`Schwann cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobioent<-data.frame(annot=GO_enrichlist_int$Enterocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$Enterocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$Enterocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Enterocytes",times=length(GO_enrichlist_int$Enterocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobigob<-data.frame(annot=GO_enrichlist_int$`Goblet cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$`Goblet cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$`Goblet cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Goblet cells",times=length(GO_enrichlist_int$`Goblet cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobifib<-data.frame(annot=GO_enrichlist_int$Fibroblasts$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$Fibroblasts$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$Fibroblasts$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Fibroblasts",times=length(GO_enrichlist_int$Fibroblasts$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiHep<-data.frame(annot=GO_enrichlist_int$Hepatocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$Hepatocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Hepatocytes",times=length(GO_enrichlist_int$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiMAC<-data.frame(annot=GO_enrichlist_int$Macrophages$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$Macrophages$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$Macrophages$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Macrophages",times=length(GO_enrichlist_int$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiSM<-data.frame(annot=GO_enrichlist_int$`Smooth muscle cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$`Smooth muscle cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$`Smooth muscle cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Smooth muscle cells",times=length(GO_enrichlist_int$`Smooth muscle cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiT<-data.frame(annot=GO_enrichlist_int$`T-lymphocytes`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_int$`T-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_int$`T-lymphocytes`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("T-lymphocytes",times=length(GO_enrichlist_int$`T-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH)))
+
+
+Gobio<-rbind(head(GobioMFb,n=5),head(GobioBcls,n=5),head(Gobioent,n=5),head(GobioPnmc,n=5),head(GobiT,n=5),head(Gobigob,n=5),head(Gobifib,n=5),head(GobioSW,n=5),head(GobiHep,n=5),head(GobiMAC,n=5),head(GobiSM,n=5),head(Gobioendo,n=5),head(GobioPCM,n=5))
+
+Gobio_top5names_sh<-Gobio$annot
+
+
+
+
+Gobio$Celltype<-factor(Gobio$Celltype, levels = c("Cardiomyocytes","Endothelial cells","Smooth muscle cells","Macrophages","Hepatocytes","Schwann cells","Fibroblasts","Goblet cells","T-lymphocytes","Pneumocytes","Enterocytes","B-lymphocytes","Myofibroblasts"))
+
+Gobio_sh<-rbind(GobioMFb,GobioBcls,Gobioent,GobioPnmc,GobiT,Gobigob,Gobifib,GobioSW,GobiHep,GobiMAC,GobiSM,Gobioendo,GobioPCM)
+Gobio_sh$ln10Pval=-log10(Gobio_sh$Hyper_Adjp_BH)
+
+SHMAT<-acast(Gobio_sh,annot~Celltype, value.var="ln10Pval")
+
+SHMAT<-SHMAT[rowSums(SHMAT>2)!=0,]
+SHMAT<-t(scale(t(SHMAT)))
+Heatmap(SHMAT,show_row_names = F,show_column_names = T,cluster_rows = T,cluster_columns = T)
+write.table(SHMAT,file="/brahms/torkenczyk/H_M_storage/analysis/go/Shared_DA_sites_go_zscored_mat_1k.txt",quote = F,sep="\t",col.names = T)
+
+write.table(Gobio,file="/brahms/torkenczyk/H_M_storage/analysis/go/Shared_DA_sites_go_latest_hg38_1k.txt",quote = F,sep="\t",col.names = T)
+
+
+
+Gobio$annot2<-paste0(paste0(Gobio$annot,"_",Gobio$Celltype))
+Gobio$annot2<-factor(Gobio$annot2,levels=Gobio$annot2)
+
+  col.low = "#08306b"
+  col.mid = "#bcbddc"
+  col.high = "#67000d"
+  
+
+  colorPal <- grDevices::colorRampPalette(c(col.low, col.mid, col.high))
+psh <- ggplot(data = Gobio, mapping = aes_string(x = 'Celltype', y = 'annot2')) +
+    geom_point(mapping = aes_string(size = 'Hyper_Fold_Enrichment', color = 'Hyper_Adjp_BH')) +
+    scale_colour_gradientn(colors=colorPal(10)) +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))
+
+Gobio<- Gobio[seq(dim(Gobio)[1],1),]
+Gobio$Celltype<-factor(Gobio$Celltype, levels = c("Cardiomyocytes","Endothelial cells","Smooth muscle cells","Macrophages","Hepatocytes","Schwann cells","Fibroblasts","Goblet cells","T-lymphocytes","Pneumocytes","Enterocytes","B-lymphocytes","Myofibroblasts"))
+Gobio$annot2<-paste0(paste0(Gobio$annot,"_",Gobio$Celltype))
+Gobio$annot2<-factor(Gobio$annot2,levels=Gobio$annot2)
+
+
+
+psh2<- ggplot(data = Gobio,aes(color = Celltype,fill = Hyper_Fold_Enrichment, x = annot2,y=-log10(Hyper_Adjp_BH))) +
+    geom_bar(stat = "identity") +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))+scale_fill_gradientn(colors=colorPal(10))
+
+
+#now human only
+
+GobioPCM<-data.frame(annot=GO_enrichlist_h$Cardiomyocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$Cardiomyocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Cardiomyocytes",times=length(GO_enrichlist_h$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioPnmc<-data.frame(annot=GO_enrichlist_h$Pneumocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$Pneumocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$Pneumocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Pneumocytes",times=length(GO_enrichlist_h$Pneumocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioMFb<-data.frame(annot=GO_enrichlist_h$Myofibroblasts$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$Myofibroblasts$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$Myofibroblasts$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Myofibroblasts",times=length(GO_enrichlist_h$Myofibroblasts$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioBcls<-data.frame(annot=GO_enrichlist_h$`B-lymphocytes`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$`B-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$`B-lymphocytes`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("B-lymphocytes",times=length(GO_enrichlist_h$`B-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobioendo<-data.frame(annot=GO_enrichlist_h$`Endothelial cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$`Endothelial cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$`Endothelial cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Endothelial cells",times=length(GO_enrichlist_h$Cardiomyocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobioSW<-data.frame(annot=GO_enrichlist_h$`Schwann cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$`Schwann cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$`Schwann cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Schwann cells",times=length(GO_enrichlist_h$`Schwann cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobioent<-data.frame(annot=GO_enrichlist_h$Enterocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$Enterocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$Enterocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Enterocytes",times=length(GO_enrichlist_h$Enterocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobigob<-data.frame(annot=GO_enrichlist_h$`Goblet cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$`Goblet cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$`Goblet cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Goblet cells",times=length(GO_enrichlist_h$`Goblet cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+Gobifib<-data.frame(annot=GO_enrichlist_h$Fibroblasts$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$Fibroblasts$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$Fibroblasts$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Fibroblasts",times=length(GO_enrichlist_h$Fibroblasts$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiHep<-data.frame(annot=GO_enrichlist_h$Hepatocytes$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$Hepatocytes$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Hepatocytes",times=length(GO_enrichlist_h$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiMAC<-data.frame(annot=GO_enrichlist_h$Macrophages$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$Macrophages$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$Macrophages$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Macrophages",times=length(GO_enrichlist_h$Hepatocytes$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiSM<-data.frame(annot=GO_enrichlist_h$`Smooth muscle cells`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$`Smooth muscle cells`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$`Smooth muscle cells`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("Smooth muscle cells",times=length(GO_enrichlist_h$`Smooth muscle cells`$`GO Biological Process`$Hyper_Adjp_BH)))
+GobiT<-data.frame(annot=GO_enrichlist_h$`T-lymphocytes`$`GO Biological Process`$name,Hyper_Adjp_BH=GO_enrichlist_h$`T-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH,Hyper_Fold_Enrichment=GO_enrichlist_h$`T-lymphocytes`$`GO Biological Process`$Hyper_Fold_Enrichment,Celltype=rep("T-lymphocytes",times=length(GO_enrichlist_h$`T-lymphocytes`$`GO Biological Process`$Hyper_Adjp_BH)))
+
+
+
+
+Gobio<-rbind(head(GobioMFb,n=5),head(GobioBcls,n=5),head(Gobioent,n=5),head(GobioPnmc,n=5),head(GobiT,n=5),head(Gobigob,n=5),head(Gobifib,n=5),head(GobioSW,n=5),head(GobiHep,n=5),head(GobiMAC,n=5),head(GobiSM,n=5),head(Gobioendo,n=5),head(GobioPCM,n=5))
+
+Gobio_top5names_h<-Gobio$annot
+
+Gobio$Celltype<-factor(Gobio$Celltype, levels = c("Cardiomyocytes","Endothelial cells","Smooth muscle cells","Macrophages","Hepatocytes","Schwann cells","Fibroblasts","Goblet cells","T-lymphocytes","Pneumocytes","Enterocytes","B-lymphocytes","Myofibroblasts"))
+Gobio$annot2<-paste0(paste0(Gobio$annot,"_",Gobio$Celltype))
+Gobio$annot2<-factor(Gobio$annot2,levels=rev(Gobio$annot2))
+
+write.table(Gobio,file="/brahms/torkenczyk/H_M_storage/analysis/go/Human_DA_sites_go_latest_1k_hg38.txt",quote = F,sep="\t",col.names = T)
+
+Gobio_h<-rbind(GobioMFb,GobioBcls,Gobioent,GobioPnmc,GobiT,Gobigob,Gobifib,GobioSW,GobiHep,GobiMAC,GobiSM,Gobioendo,GobioPCM)
+Gobio_h$ln10Pval=-log10(Gobio_h$Hyper_Adjp_BH)
+
+HMAT<-acast(Gobio_h,annot~Celltype, value.var="ln10Pval")
+
+HMAT<-HMAT[rowSums(HMAT>2)!=0,]
+HMAT<-t(scale(t(HMAT)))
+Heatmap(HMAT,show_row_names = F,show_column_names = T,cluster_rows = T,cluster_columns = T)
+write.table(HMAT,file="/brahms/torkenczyk/H_M_storage/analysis/go/Human_DA_sites_go_zscored_mat_1k.txt",quote = F,sep="\t",col.names = T)
+
+
+
+  col.low = "#08306b"
+  col.mid = "#bcbddc"
+  col.high = "#67000d"
+  
+colorPal <- grDevices::colorRampPalette(c(col.low, col.mid, col.high))
+ph <- ggplot(data = Gobio, mapping = aes_string(x = 'Celltype', y = 'annot2')) +
+    geom_point(mapping = aes_string(size = 'Hyper_Fold_Enrichment', color = 'Hyper_Adjp_BH')) +
+    scale_colour_gradientn(colors=colorPal(10)) +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))
+
+ph2<- ggplot(data = Gobio,aes(color = Celltype,fill = Hyper_Fold_Enrichment, x = annot2,y=-log10(Hyper_Adjp_BH))) +
+    geom_bar(stat = "identity") +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))+scale_fill_gradientn(colors=colorPal(10))
+
+
+
+
+
+#add matrices together
+#hg38
+MMAT<-acast(Gobio_m,annot~Celltype, value.var="ln10Pval")
+colnames(MMAT)<-paste(colnames(MMAT),"_mouse")
+
+#mm9
+MMAT2<-acast(Gobio_m2,annot~Celltype, value.var="ln10Pval")
+colnames(MMAT2)<-paste(colnames(MMAT2),"_mouse")
+
+
+HMAT<-acast(Gobio_h,annot~Celltype, value.var="ln10Pval")
+colnames(HMAT)<-paste(colnames(HMAT),"_human")
+
+SHMAT<-acast(Gobio_sh,annot~Celltype, value.var="ln10Pval")
+colnames(SHMAT)<-paste(colnames(SHMAT),"_shared")
+
+#only do shared ont
+SHMAT<-SHMAT[rowSums(SHMAT>2)!=0,]
+
+GO_2<-merge(SHMAT,HMAT,by="row.names")
+row.names(GO_2)<-GO_2$Row.names
+GO_2$Row.names<-NULL
+#GO_all<-merge(GO_2,MMAT,by="row.names")
+#OR
+GO_all<-merge(GO_2,MMAT,by="row.names")
+row.names(GO_all)<-GO_all$Row.names
+GO_all$Row.names<-NULL
+
+GO2_all<-merge(GO_2,MMAT2,by="row.names")
+row.names(GO2_all)<-GO2_all$Row.names
+GO2_all$Row.names<-NULL
+
+
+#GO_all_filt<-GO_all[rowSums(GO_all>2)!=0,]
+
+#for shared analysis we used hg38 mouse
+
+
+Heatmap(GO_all,show_row_names = F,show_column_names = T,cluster_rows = T,cluster_columns = F)
+
+GO_all<-GO_all[,c(1,14,27,2,15,28,3,16,29,4,17,30,5,18,31,6,19,32,7,20,33,8,21,34,9,22,35,10,23,36,11,24,37,12,25,38,13,26,39)]
+
+Heatmap(GO_all,show_row_names = F,show_column_names = T,cluster_rows = T,cluster_columns = F)
+
+unique2cl=list()
+sharedb2cl=list()
+for (i in 1:13)
+{
+print(colnames(SHMAT)[i])
+topct <- row.names(SHMAT)[SHMAT[,i]>2 & rowSums(SHMAT[,-i]>2)==0]
+unique2cl[[colnames(SHMAT)[i]]]<-topct
+
+topctsh <- row.names(SHMAT)[SHMAT[,i]>2 & rowSums(SHMAT[,-i]>2)>0]
+sharedb2cl[[colnames(SHMAT)[i]]]<-topctsh
+
+}
+
+GO_all_filt_2<-GO_all[c(unique(unlist(unique2cl)),unique(unlist(sharedb2cl))),]
+split_coord<- c(rep("unique to cell type",times=length(unlist(unique2cl))),rep("shared bw cell types",times=length(unique(unlist(sharedb2cl)))))
+
+hdf<-data.frame(loc=match(Gobio_top5names_h,row.names(GO_all_filt_2)),name=Gobio_top5names_h)
+hdf<-na.omit(hdf)
+hdf<-hdf[length(unique(unlist(unique2cl)))<hdf$loc,]
+
+shdf<-data.frame(loc=match(Gobio_top5names_sh,row.names(GO_all_filt_2)),name=Gobio_top5names_sh)
+shdf<-na.omit(shdf)
+shdf<-shdf[length(unique(unlist(unique2cl)))>shdf$loc,]
+
+mdf<-data.frame(loc=match(Gobio_top5names_m,row.names(GO_all_filt_2)),name=Gobio_top5names_m)
+mdf<-na.omit(mdf)
+mdf<-mdf[length(unique(unlist(unique2cl)))<mdf$loc,]
+
+Gobio_top5names_sh
+
+
+
+
+ha = rowAnnotation(foo = anno_mark(at = c(hdf$loc[1:5],shdf$loc), labels = c(hdf$name[1:5],shdf$name)))
+
+#split messes things up so should pobably split myself
+
+Heatmap(GO_all_filt_2,split =split_coord,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F,right_annotation = ha)
+Heatmap(GO_all_filt_2,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F,right_annotation = ha)
+
+
+
+GO_all_filt_2_first<-GO_all_filt_2[unique(unlist(unique2cl)),]
+GO_all_filt_2_second<-GO_all_filt_2[unique(unlist(sharedb2cl)),]
+
+
+shdf<-data.frame(loc=match(Gobio_top5names_sh,row.names(GO_all_filt_2_first)),name=Gobio_top5names_sh)
+shdf<-na.omit(shdf)
+shdf<-shdf[length(unique(unlist(unique2cl)))>shdf$loc,]
+
+ha1 = rowAnnotation(foo = anno_mark(at = c(shdf$loc), labels = c(shdf$name)))
+Heatmap(GO_all_filt_2_first,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F,right_annotation = ha1)
+
+Bsel<-row.names(GO_all_filt_2_first[GO_all_filt_2_first$`B-lymphocytes _shared`>2,][c(1,23),])
+Csel<-row.names(GO_all_filt_2_first[GO_all_filt_2_first$`Cardiomyocytes _shared`>2,][c(14,18),])
+Esel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`Endothelial cells _shared`,decreasing = T),][c(1,2),])
+Entsel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`Enterocytes _shared`,decreasing = T),][c(1,6),])
+Gsel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`Goblet cells _shared`,decreasing = T),][c(1,2),])
+Fsel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`Fibroblasts _shared`,decreasing = T),][c(1,2),])
+Hsel<-shdf$name[c(5,6)]
+Msel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`Macrophages _shared`,decreasing = T),][c(2,3),])
+Mysel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`Myofibroblasts _shared`,decreasing = T),][c(1,3),])
+Pysel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`Pneumocytes _shared`,decreasing = T),][c(12,16),])
+SWsel<-shdf$name[c(3,4)]
+SMysel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`Smooth muscle cells _shared`,decreasing = T),][c(11,12),])
+Tsel<-row.names(GO_all_filt_2_first[order(GO_all_filt_2_first$`T-lymphocytes _shared`,decreasing = T),][c(2,4),])
+
+selected_shared_names<-c(Bsel,Csel,Esel,Entsel,Gsel,Fsel,Hsel,Msel,Mysel,Pysel,SWsel,SMysel,Tsel)
+selected_shared_pos<-match(selected_shared_names,row.names(GO_all_filt_2_first))
+
+ha_sh = rowAnnotation(foo = anno_mark(at = c(selected_shared_pos), labels = c(selected_shared_names)))
+Heatmap(GO_all_filt_2_first,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F,right_annotation = ha_sh)
+
+#now lets see mouse unique ones
+
+
+#add matrices together
+#hg38 or mm9
+MMAT<-acast(Gobio_m2,annot~Celltype, value.var="ln10Pval")
+colnames(MMAT)<-paste(colnames(MMAT),"_mouse")
+HMAT<-acast(Gobio_h,annot~Celltype, value.var="ln10Pval")
+colnames(HMAT)<-paste(colnames(HMAT),"_human")
+SHMAT<-acast(Gobio_sh,annot~Celltype, value.var="ln10Pval")
+colnames(SHMAT)<-paste(colnames(SHMAT),"_shared")
+
+#only do mouse ont
+MMAT<-MMAT[rowSums(MMAT>2)!=0,]
+
+GO_2<-merge(SHMAT,HMAT,by="row.names")
+row.names(GO_2)<-GO_2$Row.names
+GO_2$Row.names<-NULL
+#GO_all<-merge(GO_2,MMAT,by="row.names")
+#OR
+GO_all<-merge(GO_2,MMAT,by="row.names")
+row.names(GO_all)<-GO_all$Row.names
+GO_all$Row.names<-NULL
+GO_all<-GO_all[,c(1,14,27,2,15,28,3,16,29,4,17,30,5,18,31,6,19,32,7,20,33,8,21,34,9,22,35,10,23,36,11,24,37,12,25,38,13,26,39)]
+
+
+MMAT_sel<-MMAT[rowSums(MMAT>2)!=0,]
+unique2cl_m=list()
+for (i in 1:13)
+{
+print(colnames(MMAT_sel)[i])
+topct <- row.names(MMAT_sel)[MMAT_sel[,i]>2 & rowSums(MMAT_sel[,-i]>2)==0]
+unique2cl_m[[colnames(MMAT_sel)[i]]]<-topct
+}
+
+MMAT2_sel_uniq<-na.omit(GO_all[unique(unlist(unique2cl_m)),])
+
+Heatmap(MMAT2_sel_uniq,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F)
+
+order_by_column<-function(MAT,ordering_column){
+selected_rows<-row.names(MAT[MAT[,ordering_column]>2,])
+sel_r<-MAT[selected_rows,]
+ordered_MAT<-sel_r[order(sel_r[,ordering_column],decreasing = T),]
+return(row.names(ordered_MAT)[1:2])
+
+}
+
+top_2<-lapply(colnames(MMAT2_sel_uniq)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)],FUN=function(x)(order_by_column(MAT = MMAT2_sel_uniq,ordering_column = x)))
+mouse_top_names<-unlist(top_2)
+mouse_top_pos<-match(mouse_top_names,row.names(MMAT2_sel_uniq))
+ha_m = rowAnnotation(foo = anno_mark(at = c(mouse_top_pos), labels = c(mouse_top_names)))
+Heatmap(MMAT2_sel_uniq,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F,right_annotation = ha_m)
+
+#same for human
+
+
+#add matrices together
+#hg38
+MMAT<-acast(Gobio_m,annot~Celltype, value.var="ln10Pval")
+colnames(MMAT)<-paste(colnames(MMAT),"_mouse")
+HMAT<-acast(Gobio_h,annot~Celltype, value.var="ln10Pval")
+colnames(HMAT)<-paste(colnames(HMAT),"_human")
+SHMAT<-acast(Gobio_sh,annot~Celltype, value.var="ln10Pval")
+colnames(SHMAT)<-paste(colnames(SHMAT),"_shared")
+
+#only do mouse ont
+HMAT<-HMAT[rowSums(HMAT>2)!=0,]
+
+GO_2<-merge(SHMAT,HMAT,by="row.names")
+row.names(GO_2)<-GO_2$Row.names
+GO_2$Row.names<-NULL
+#GO_all<-merge(GO_2,MMAT,by="row.names")
+#OR
+GO_all<-merge(GO_2,MMAT,by="row.names")
+row.names(GO_all)<-GO_all$Row.names
+GO_all$Row.names<-NULL
+GO_all<-GO_all[,c(1,14,27,2,15,28,3,16,29,4,17,30,5,18,31,6,19,32,7,20,33,8,21,34,9,22,35,10,23,36,11,24,37,12,25,38,13,26,39)]
+
+
+HMAT_sel<-HMAT[rowSums(HMAT>2)!=0,]
+unique2cl_h=list()
+for (i in 1:13)
+{
+print(colnames(HMAT_sel)[i])
+topct <- row.names(HMAT_sel)[HMAT_sel[,i]>2 & rowSums(HMAT_sel[,-i]>2)==0]
+unique2cl_h[[colnames(HMAT_sel)[i]]]<-topct
+}
+
+HMAT2_sel_uniq<-na.omit(GO_all[unique(unlist(unique2cl_h)),])
+
+Heatmap(HMAT2_sel_uniq,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F)
+
+top_2<-lapply(colnames(HMAT2_sel_uniq)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)],FUN=function(x)(order_by_column(MAT = HMAT2_sel_uniq,ordering_column = x)))
+human_top_names<-unlist(top_2)
+human_top_pos<-match(human_top_names,row.names(HMAT2_sel_uniq))
+ha_h = rowAnnotation(foo = anno_mark(at = c(human_top_pos), labels = c(human_top_names)))
+Heatmap(HMAT2_sel_uniq,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F,right_annotation = ha_h)
+
+
+#same for shared
+
+
+#add matrices together
+#hg38
+MMAT<-acast(Gobio_m,annot~Celltype, value.var="ln10Pval")
+colnames(MMAT)<-paste(colnames(MMAT),"_mouse")
+HMAT<-acast(Gobio_h,annot~Celltype, value.var="ln10Pval")
+colnames(HMAT)<-paste(colnames(HMAT),"_human")
+SHMAT<-acast(Gobio_sh,annot~Celltype, value.var="ln10Pval")
+colnames(SHMAT)<-paste(colnames(SHMAT),"_shared")
+
+#only do shared
+SHMAT<-SHMAT[rowSums(SHMAT>2)!=0,]
+
+GO_2<-merge(SHMAT,HMAT,by="row.names")
+row.names(GO_2)<-GO_2$Row.names
+GO_2$Row.names<-NULL
+#GO_all<-merge(GO_2,MMAT,by="row.names")
+#OR
+GO_all<-merge(GO_2,MMAT,by="row.names")
+row.names(GO_all)<-GO_all$Row.names
+GO_all$Row.names<-NULL
+GO_all<-GO_all[,c(1,14,27,2,15,28,3,16,29,4,17,30,5,18,31,6,19,32,7,20,33,8,21,34,9,22,35,10,23,36,11,24,37,12,25,38,13,26,39)]
+
+
+SHMAT_sel<-SHMAT[rowSums(SHMAT>2)!=0,]
+unique2cl_sh=list()
+for (i in 1:13)
+{
+print(colnames(SHMAT_sel)[i])
+topct <- row.names(SHMAT_sel)[SHMAT_sel[,i]>2 & rowSums(SHMAT_sel[,-i]>2)==0]
+unique2cl_sh[[colnames(SHMAT_sel)[i]]]<-topct
+}
+
+SHMAT2_sel_uniq<-na.omit(GO_all[unique(unlist(unique2cl_sh)),])
+
+Heatmap(SHMAT2_sel_uniq,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F)
+
+top_2<-lapply(colnames(SHMAT2_sel_uniq)[c(3,6,9,12,15,18,21,24,27,30,33,36,39)],FUN=function(x)(order_by_column(MAT = SHMAT2_sel_uniq,ordering_column = x)))
+shared_top_names<-unlist(top_2)
+shared_top_pos<-match(shared_top_names,row.names(SHMAT2_sel_uniq))
+ha_sh = rowAnnotation(foo = anno_mark(at = c(shared_top_pos), labels = c(shared_top_names)))
+H<-Heatmap(SHMAT2_sel_uniq,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F)
+
+
+GO_all_selected<-rbind(SHMAT2_sel_uniq,HMAT2_sel_uniq,MMAT2_sel_uniq)
+library(circlize)
+col_fun = colorRamp2(c(0,3,6), c("#08306b", "#bcbddc" ,"#67000d"))
+H<-Heatmap(GO_all_selected,show_row_names = F,show_column_names = T,cluster_rows = F,cluster_columns = F,split=c(rep("Shared",times=dim(SHMAT2_sel_uniq)[1]),rep("Human",times=dim(HMAT2_sel_uniq)[1]),rep("Mouse",times=dim(MMAT2_sel_uniq)[1])),col = col_fun,use_raster=F)
+
+
+
+#create dot plot of shared bio processes
+
+shared_subset_list<-list()
+for (i in names(GO_enrichlist_int))
+{
+print(i)
+int<-GO_enrichlist_int[[i]]$`GO Biological Process`
+#names(int)<-paste0("shared_",names(int))
+#int$ID<-int$shared_ID
+int$celltype<-i
+int$annot<-"shared"
+
+
+h<-GO_enrichlist_m[[i]]$`GO Biological Process`
+#names(h)<-paste0("human_",names(h))
+#h$ID<-h$human_ID
+h$celltype<-i
+h$annot<-"human"
+
+m<-GO_enrichlist_h[[i]]$`GO Biological Process`
+#names(m)<-paste0("mouse_",names(m))
+#m$ID<-m$mouse_ID
+m$celltype<-i
+m$annot<-"mouse"
+
+
+
+ct_merged<-rbind(int,h,m)
+
+
+
+
+ct_subset<-ct_merged[ct_merged$name %in% Gobio_sh$annot,]
+
+shared_subset_list[[i]]<-ct_subset
+
+}
+library(dplyr)
+ct_subset_all<-bind_rows(shared_subset_list, .id = "column_label")
+
+
+ct_subset_all$name<-factor(ct_subset_all$name,levels=unique(Gobio_sh$annot))
+
+
+psubset_all<- ggplot(data = ct_subset_all,aes(color = celltype,size = Hyper_Fold_Enrichment, x = name,y=-log10(Hyper_Adjp_BH))) +
+    geom_jitter() +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))+scale_fill_gradientn(colors=colorPal(10))
+
+
+psubset_all2 <- ggplot(data = ct_subset_all, mapping = aes_string(x = 'celltype', y = 'name')) +
+    geom_point(mapping = aes_string(size = 'Hyper_Fold_Enrichment', color = 'Hyper_Adjp_BH')) +
+    scale_colour_gradientn(colors=colorPal(10)) +
+    theme_classic() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+```

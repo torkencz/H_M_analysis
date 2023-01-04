@@ -7,6 +7,242 @@ output: html_document
 
 
 
+
+external function, can modify output
+```{r}
+plot_combined_cross_species<-function(gene,gene_mouse=NULL,upstr=1000,downstr=1000,plot_by="handannot",motif.names=NULL,highlight_human_reg=NULL,highlight_mouse_reg=NULL,validate=F){
+  fname<-substring(gene, 1,1)
+  sname<-substring(gene, 2)
+  if(is.null(gene_mouse)) 
+  {
+  gene_mouse<-paste0(toupper(fname),tolower(sname))
+  }
+  gene_human<-toupper(gene)
+  
+
+  all_plots<-list()
+ # reg_h<-FindRegion(object = human_all_atac,region = gene_human,extend.downstream = downstr,extend.upstream = upstr,assay = "cre")
+#  reg_m<-FindRegion(object = mouse_select_atac,region = gene_mouse,extend.downstream = downstr,extend.upstream = upstr,assay = "mm10")
+  
+  reg_h <- LookupGeneCoords(object = human_all_atac,gene = gene_human,assay = "cre")
+  reg_h <- suppressWarnings(expr = Extend(x = reg_h, upstream = upstr,downstream = downstr))
+  
+  reg_m <- LookupGeneCoords(object = mouse_select_atac,gene = gene_mouse,assay = "mm10")
+  reg_m <- suppressWarnings(expr = Extend(x = reg_m, upstream = upstr,downstream = downstr))
+  
+  
+  
+  #findOverlaps(subject=reg_h,query = highlight_human_reg)
+  
+  print(paste0("plotting gene: ", gene))
+  print(paste0("plotting human: ", gene_human," human: ",reg_h))
+  print(paste0("plotting mouse: ", gene_mouse," mouse: ",reg_m))
+  mm10_phylp="/home/torkenczyk/conservation_tracks/mm10.60way.phyloP60way.bw"
+  hg38_phylp="/home/torkenczyk/conservation_tracks/hg38.phyloP100way.bw"
+  mm10_lecif="/home/torkenczyk/conservation_tracks/mm10.hg38.LECIF.srt.median.bw"
+  hg38_lecif="/home/torkenczyk/conservation_tracks/hg38.mm10.LECIF.srt.median.bw"
+ # conservation_mm10<-BigwigTrack(region = reg_m,bigwig = mm10_phylp,type = 'heatmap')
+  #conservation_hg38<-BigwigTrack(region = reg_h,bigwig = hg38_phylp,type = 'heatmap')
+  
+   hg38_A549_a="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137776_ENCFF631HEX_signal_of_unique_reads_GRCh38.bigWig"
+   hg38_A549_b="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137777_ENCFF103COS_signal_of_unique_reads_GRCh38.bigWig"
+   hg38_A549_c="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/GSM3137778_ENCFF957GCK_signal_of_unique_reads_GRCh38.bigWig"
+  
+   
+   
+  if(!is.null(motif.names)){
+  print("Adding Motifs")
+  print("For Hg38")
+  ls<-unlist(GetMotifData(object = human_all_atac, assay = "cre", slot = "motif.names"))
+  motif_labels<-names(ls[match(motif.names,ls)])
+  M<-GetMotifData(human_all_atac, assay = "cre")[,motif_labels]
+  M2<-apply(M,2,function(x){which(x>0)})
+  M2n<-apply(M,2,function(x){which(x==0)})
+
+  
+  Mdf<-data.frame(motifs=rep("",times=length(row.names(M))))
+  M<-as.matrix(M)
+  for (mt in names(M2)){
+    c_ct<-match(mt,colnames(M))
+    mt_n<-ls[match(mt,names(ls))]
+    M[M2[[mt]],c_ct]<-mt_n
+    M[M2n[[mt]],c_ct]<-""
+  }
+  M<-as.data.frame(M)
+  M <- M %>% unite(motif, colnames(M), sep = ',')
+  M$motif<-gsub(M$motif,perl=T,pattern = ",{2,}",replacement = "")
+  M$motif<-gsub(M$motif,perl=T,pattern = "^,",replacement = "")
+  M$motif<-gsub(M$motif,perl=T,pattern = ",$",replacement = "")
+  M$motif[which(M$motif=="")]<-"No motif"
+  
+  human_all_atac[["cre"]]<-AddMetaData(human_all_atac[["cre"]],M)
+  mouse_select_atac[["cre"]]<-AddMetaData(mouse_select_atac[["cre"]],M)
+  
+  print("For MM10")
+  ls<-unlist(GetMotifData(object = mouse_select_atac, assay = "mm10", slot = "motif.names"))
+  motif_labels<-names(ls[match(motif.names,ls)])
+  M<-GetMotifData(mouse_select_atac,assay = "mm10")[,motif_labels]
+  M2<-apply(M,2,function(x){which(x>0)})
+  M2n<-apply(M,2,function(x){which(x==0)})
+  Mdf<-data.frame(motifs=rep("",times=length(row.names(M))))
+  M<-as.matrix(M)
+  for (mt in names(M2)){
+    c_ct<-match(mt,colnames(M))
+    mt_n<-ls[match(mt,names(ls))]
+    M[M2[[mt]],c_ct]<-mt_n
+    M[M2n[[mt]],c_ct]<-""
+  }
+  M<-as.data.frame(M)
+  M <- M %>% unite(motif, colnames(M), sep = ',')
+  M$motif<-gsub(M$motif,perl=T,pattern = ",{2,}",replacement = "")
+  M$motif<-gsub(M$motif,perl=T,pattern = "^,",replacement = "")
+  M$motif<-gsub(M$motif,perl=T,pattern = ",$",replacement = "")
+  #M$motif<-gsub(M$motif,perl=T,pattern = ",No motif$",replacement = "")
+  M$motif[which(M$motif=="")]<-"No motif"
+  mouse_select_atac[["mm10"]]<-AddMetaData(mouse_select_atac[["mm10"]],M)
+  
+  mouse1<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="mm10",
+    group.by=plot_by,
+    region = gene_mouse,
+    annotation=T,peaks=T,
+    extend.upstream = upstr,
+    extend.downstream = downstr,bigwig = list(mm10_phylp,mm10_lecif),bigwig.type = 'heatmap',peaks.group.by = "motif", region.highlight = highlight_mouse_reg
+  )
+  
+  mouse2<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="cre",
+    group.by=plot_by,
+    region = gene_human,
+    annotation=T,peaks=T,
+    extend.upstream = upstr,
+    extend.downstream = downstr,bigwig = list(hg38_phylp,hg38_lecif),bigwig.type = 'heatmap',peaks.group.by = "motif",region.highlight = highlight_human_reg
+  )
+  
+  human<-CoveragePlot(
+    object = human_all_atac, 
+    group.by=plot_by,region = gene_human,assay ="cre",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=T,peaks=T,bigwig = list(hg38_phylp,hg38_lecif),bigwig.type = 'heatmap',peaks.group.by = "motif", region.highlight = highlight_human_reg
+  )
+  
+  
+  } else {
+  
+  
+  mouse1<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="mm10",
+    group.by=plot_by,
+    region = reg_m,
+    annotation=T,peaks=T,
+    extend.upstream = upstr,
+    extend.downstream = downstr,bigwig = list(mm10_phylp,mm10_lecif),bigwig.type = 'heatmap', region.highlight = highlight_mouse_reg
+  )
+  
+  mouse2<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="cre",
+    group.by=plot_by,
+    region = reg_h,
+    annotation=T,peaks=T,
+    extend.upstream = upstr,
+    extend.downstream = downstr,bigwig = list(hg38_phylp,hg38_lecif),bigwig.type = 'heatmap',region.highlight = highlight_human_reg
+  )
+  
+    mouse2b<-CoveragePlot(
+    object = mouse_select_atac,links = F,assay ="cre",
+    group.by=plot_by,
+    region = reg_h,
+    annotation=F,peaks=F,
+    extend.upstream = upstr,
+    extend.downstream = downstr,region.highlight = highlight_human_reg)
+  
+  human<-CoveragePlot(
+    object = human_all_atac, 
+    group.by=plot_by,region = reg_h,assay ="cre",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=T,peaks=T,bigwig = list(hg38_phylp,hg38_lecif),bigwig.type = 'heatmap',region.highlight = highlight_human_reg
+  )
+  
+  humanb<-CoveragePlot(
+    object = human_all_atac, 
+    group.by=plot_by,region = reg_h,assay ="cre",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=T,peaks=T,bigwig = list(hg38_A549_a,hg38_A549_b,hg38_A549_c),bigwig.type = "coverage",region.highlight = highlight_human_reg
+  )
+ 
+  }
+  
+  
+    plots2<-wrap_plots(list(mouse2b,human), ncol = 1, heights = c(8,10))
+    print(paste0("plotting gene: ", gene))
+    png(filename = paste0("/brahms/torkenczyk/H_M_storage/analysis/plots/",gene,"_combined.wcons_yaxe2.png"),width = 20,height=18,units = "cm",res=300)
+    print(plots2)
+    dev.off()
+    ggsave(plot = plots2,filename = paste0("/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/",gene,"_combined.wcons_yaxe.pdf"),width = 10,height=18,units = "cm")
+    print("THIS")
+    plots<-wrap_plots(list(mouse1,mouse2,human), ncol = 3, widths  = c(10,10,10))
+    png(filename = paste0("/brahms/torkenczyk/H_M_storage/analysis/plots/",gene,"_combined.wcons2.png"),width = 30,height=25,units = "cm",res=300)
+    print(wrap_plots(list(mouse1,mouse2,human), ncol = 3, widths  = c(10,10,10)))
+    dev.off()
+    
+    all_plots[["mouse_orig"]]<-mouse1
+    
+    all_plots[["mouse_cre"]]<-mouse2b
+    all_plots[["human_cre"]]<-human
+    
+    if (validate==T){
+    #with mouse
+      print("Plotting validation of mouse")
+    DefaultAssay(M_subset)<-"peaks"
+    
+    mouse2c<-CoveragePlot(
+    object = M_subset,links = F,assay ="peaks",
+    group.by="cell_type",
+    region = reg_m,
+    annotation=F,peaks=F,
+    extend.upstream = upstr,
+    extend.downstream = downstr,region.highlight = highlight_mouse_reg)
+    plots3<-wrap_plots(list(mouse2c,mouse1), ncol = 1, heights = c(8,10))
+    
+    png(filename = paste0("/brahms/torkenczyk/H_M_storage/analysis/plots/",gene,"_combined.wcons_yaxe_mouse_VAL.png"),width = 20,height=18,units = "cm",res=300)
+    print(plots3)
+    dev.off()
+    
+     all_plots[["mouse_val"]]<-mouse2c
+    
+    #with human
+    
+    print("Plotting validation of human")
+    DefaultAssay(integrated)<-"bins"
+    
+    human_v<-CoveragePlot(object = integrated, 
+    group.by="cluster_name",region = reg_h,assay ="bins",
+    extend.upstream = upstr,
+    extend.downstream = downstr,annotation=F,peaks=F,region.highlight = highlight_human_reg)
+   
+     all_plots[["human_val"]]<-human_v
+    
+    
+    plots4<-wrap_plots(list(human_v,humanb), ncol = 1, heights = c(8,14))
+    print("THIS")
+    png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/A459/plots/",gene,"_combined.wcons_yaxe_human_VAL.png"),width = 20,height=28,units = "cm",res=300)
+    print(plots4)
+    dev.off()
+    print("THIS2")
+    png(filename = paste0("/brahms/torkenczyk/H_M_storage/analysis/plots/",gene,"_combined.wcons_yaxe_human_VAL.png"),width = 20,height=28,units = "cm",res=300)
+    print(plots4)
+    dev.off()
+    
+    }
+    
+   return(all_plots)
+}
+
+```
+
+
+
+
 Validation in a human lung dataset
 
 ```{r}
@@ -14,15 +250,15 @@ Validation in a human lung dataset
 
 
 all_data<- read.table(
-  file = "/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSE161381_lung_snATAC.UMAP.cluster_labels.txt.gz",
+  file = "/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSE161381_lung_snATAC.UMAP.cluster_labels.txt.gz",
   header = TRUE,
   row.names = 1
 )
 
 
-counts_D122 <- read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D122.mtx.gz",skip = 2)
-rows_D122 <- read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D122.regions.tsv.gz")
-cols_D122<-read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D122.barcodes.tsv.gz")
+counts_D122 <- read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D122.mtx.gz",skip = 2)
+rows_D122 <- read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D122.regions.tsv.gz")
+cols_D122<-read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D122.barcodes.tsv.gz")
 
 resize<-StringToGRanges(rows_D122$V1,sep = c(":", "-"))
 end(resize)<-end(resize)-1
@@ -49,7 +285,7 @@ human_D1221_atac <- CreateSeuratObject(
   meta.data = all_data
 )
 
-saveRDS(human_D1221_atac,file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D122.seurat.rds")
+saveRDS(human_D1221_atac,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D122.seurat.rds")
 
 
 human_D1221_atac <- RunTFIDF(human_D1221_atac)
@@ -58,12 +294,12 @@ human_D1221_atac <- RunSVD(human_D1221_atac)
 human_D1221_atac <- RunUMAP(object = human_D1221_atac, reduction = 'lsi', dims = 2:30)
 DimPlot(object = human_D1221_atac, label = TRUE,group.by = "cluster_name") + NoLegend()
 
-saveRDS(human_D1221_atac,file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D122.seurat.rds")
+saveRDS(human_D1221_atac,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D122.seurat.rds")
 
 
-counts_D175 <- read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906343_D175.mtx.gz",skip = 2)
-rows_D175 <- read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906343_D175.regions.tsv.gz")
-cols_D175<-read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906343_D175.barcodes.tsv.gz")
+counts_D175 <- read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906343_D175.mtx.gz",skip = 2)
+rows_D175 <- read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906343_D175.regions.tsv.gz")
+cols_D175<-read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906343_D175.barcodes.tsv.gz")
 
 resize<-StringToGRanges(rows_D175$V1,sep = c(":", "-"))
 end(resize)<-end(resize)-1
@@ -89,7 +325,7 @@ human_D1751_atac <- CreateSeuratObject(
   meta.data = all_data
 )
 
-saveRDS(human_D1751_atac,file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D175.seurat.rds")
+saveRDS(human_D1751_atac,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D175.seurat.rds")
 
 
 human_D1751_atac <- RunTFIDF(human_D1751_atac)
@@ -98,12 +334,12 @@ human_D1751_atac <- RunSVD(human_D1751_atac)
 human_D1751_atac <- RunUMAP(object = human_D1751_atac, reduction = 'lsi', dims = 2:30)
 DimPlot(object = human_D1751_atac, label = TRUE,group.by = "cluster_name") + NoLegend()
 
-saveRDS(human_D1751_atac,file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D175.seurat.rds")
+saveRDS(human_D1751_atac,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D175.seurat.rds")
 
 
-counts_D231 <- read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906344_D231.mtx.gz",skip = 2)
-rows_D231 <- read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906344_D231.regions.tsv.gz")
-cols_D231<-read.table("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906344_D231.barcodes.tsv.gz")
+counts_D231 <- read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906344_D231.mtx.gz",skip = 2)
+rows_D231 <- read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906344_D231.regions.tsv.gz")
+cols_D231<-read.table("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906344_D231.barcodes.tsv.gz")
 
 resize<-StringToGRanges(rows_D231$V1,sep = c(":", "-"))
 end(resize)<-end(resize)-1
@@ -129,7 +365,7 @@ human_D2311_atac <- CreateSeuratObject(
   meta.data = all_data
 )
 
-saveRDS(human_D2311_atac,file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D231.seurat.rds")
+saveRDS(human_D2311_atac,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D231.seurat.rds")
 
 
 human_D2311_atac <- RunTFIDF(human_D2311_atac)
@@ -138,7 +374,7 @@ human_D2311_atac <- RunSVD(human_D2311_atac)
 human_D2311_atac <- RunUMAP(object = human_D2311_atac, reduction = 'lsi', dims = 2:30)
 DimPlot(object = human_D2311_atac, label = TRUE,group.by = "cluster_name") + NoLegend()
 
-saveRDS(human_D2311_atac,file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/GSM4906342_D231.seurat.rds")
+saveRDS(human_D2311_atac,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultGSM4906342_D231.seurat.rds")
 
 human_D2311_atac$dataset <- "D231"
 human_D1221_atac$dataset <- "D122"
@@ -191,9 +427,9 @@ genome(annotations_human) <- "hg38"
 # add the gene information to the object
 Annotation(integrated)<- annotations_human
 
-saveRDS(integrated,file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/All.seurat.rds")
+saveRDS(integrated,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultAll.seurat.rds")
 
-integrated<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/All.seurat.rds")
+integrated<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultAll.seurat.rds")
 
 integrated=subset(integrated,cells=colnames(integrated)[!is.na(integrated$cluster_name)])
 
@@ -204,7 +440,7 @@ DefaultAssay(integrated)<-"bins"
 #add in hg38, which I regenerated
 
 frags_add_fragments <- CreateFragmentObject(
-  path = "/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/fragments_all_human.verify.frags.bed.final.final.srt.bed.hg38.srt.gz",
+  path = "/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultfragments_all_human.verify.frags.bed.final.final.srt.bed.hg38.srt.gz",
   cells = colnames(integrated), 
   validate.fragments = TRUE
 )
@@ -216,11 +452,11 @@ Fragments(integrated)<-frags_add_fragments
 
 #add to validation hg19 assay
 
-all_cre_hg19<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/ALL.bg.hg19.bed",header = F)
+all_cre_hg19<-read.table(/brahms/torkenczyk/H_M_storage/analysis/bedfiles/ALL.bg.hg19.bed",header = F)
 all_cre_hg19<-paste(all_cre_hg19$V1,all_cre_hg19$V2,all_cre_hg19$V3,sep = "-")
 all_cre_hg19_gr<-reduce(StringToGRanges(all_cre_hg19,sep = c("-","-")))
 
-fragment<-"/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/fragments_all_human.verify.frags.bed.final.final.srt.bed.hg19.gz"
+fragment<-"/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultfragments_all_human.verify.frags.bed.final.final.srt.bed.hg19.gz"
 
 fragments_hg19 <- CreateFragmentObject(
   path = fragment,cells = colnames(integrated)
@@ -240,7 +476,7 @@ integrated[["hg19_cre"]] <- CreateChromatinAssay(
   fragments = fragments_hg19
 )
 
-saveRDS(integrated,file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/All.seurat.rds")
+saveRDS(integrated,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultAll.seurat.rds")
 
 DefaultAssay(integrated)<-"hg19_cre"
 
@@ -251,9 +487,9 @@ integrated <- RunUMAP(integrated, reduction = "lsi", dims = 2:30)
 p1 <- DimPlot(integrated, group.by = "cluster_name",label = T,pt.size = 1)
 
 
-MO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed")
-HO<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed")
-S<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/celltype_bedfiles/Shared2celline.Pneumocytes.hg19.bed")
+MO<-read.table(/brahms/torkenczyk/H_M_storage/analysis/bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed")
+HO<-read.table(/brahms/torkenczyk/H_M_storage/analysis/bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed")
+S<-read.table(/brahms/torkenczyk/H_M_storage/analysis/bedfiles/Shared2celline.Pneumocytes.hg19.bed")
 
 M_granges<-StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))
 H_granges<-StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))
@@ -312,6 +548,501 @@ DimPlot(integrated,label=T)
 
 
 ```
+
+#There is also RNA data here so lets integrate
+```{r}
+
+integrated<-readRDS(file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultAll.seurat.rds")
+#get RNA D122 D175 D231
+
+mtx <- "/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultscRNA/GSE161382_counts.mtx.gz"
+cells <- "/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultscRNA/GSE161382_barcodes.tsv.gz"
+features <- "/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultscRNA/GSE161382_features.tsv.gz"
+
+cell.barcodes <- read.table(file =cells, header = T, row.names = 1)
+feature.names <- read.table(file =features, header = T, row.names = 1)
+
+
+
+ data <- readMM(file = mtx)
+ #data <- t(x = data)
+ colnames(x = data) <- cell.barcodes$x
+ rownames(x = data) <- feature.names$x
+    data <- as(data, Class = "dgCMatrix")
+
+lung_RNA_all<-CreateSeuratObject(counts=data)
+metadata=read.table(file = "/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultscRNA/GSE161382_metadata.txt.gz")   
+lung_RNA_all<-AddMetaData(lung_RNA_all,metadata = metadata)    
+
+Idents(lung_RNA_all)<-"donor"
+
+lung_RNA_adult<-subset(lung_RNA_all,idents=c("D122","D175","D231"))
+
+lung_RNA_adult <- NormalizeData(lung_RNA_adult)
+all.genes <- rownames(lung_RNA_adult)
+lung_RNA_adult <- ScaleData(lung_RNA_adult, features = all.genes)
+lung_RNA_adult<-FindVariableFeatures(lung_RNA_adult)
+lung_RNA_adult <- RunPCA(lung_RNA_adult, features = VariableFeatures(object = lung_RNA_adult))
+ElbowPlot(lung_RNA_adult)
+lung_RNA_adult <- RunUMAP(lung_RNA_adult, dims = 1:20)
+DimPlot(lung_RNA_adult,group.by = "celltype",label = T)+NoLegend()
+
+DefaultAssay(integrated)<-"hg19_cre"
+
+integrated <- RunTFIDF(integrated)
+integrated <- FindTopFeatures(integrated, min.cutoff = "q0")
+integrated <- RunSVD(integrated,reduction.key = "lsi19",reduction.name = "lsi19")
+integrated <- RunUMAP(integrated, reduction = "lsi19", dims = 2:30, reduction.name = "umap.atac", reduction.key = "atacUMAP_")
+
+library("EnsDb.Hsapiens.v75")
+# ATAC analysis add gene annotation information
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v75)
+seqlevelsStyle(annotations) <- "UCSC"
+genome(annotations) <- "hg19"
+Annotation(integrated) <- annotations
+
+
+gene.activities <- GeneActivity(integrated, features = VariableFeatures(lung_RNA_adult))
+
+# add gene activities as a new assay
+integrated[["ACTIVITY"]] <- CreateAssayObject(counts = gene.activities)
+
+# normalize gene activities
+DefaultAssay(integrated) <- "ACTIVITY"
+integrated <- NormalizeData(integrated)
+integrated <- ScaleData(integrated, features = rownames(integrated))
+
+transfer.anchors <- FindTransferAnchors(reference = lung_RNA_adult, query = integrated, features = VariableFeatures(object = lung_RNA_adult),
+    reference.assay = "RNA", query.assay = "ACTIVITY", reduction = "cca")
+
+
+genes.use <- VariableFeatures(lung_RNA_adult)
+refdata <- GetAssayData(lung_RNA_adult, assay = "RNA", slot = "data")[genes.use, ]
+
+# refdata (input) contains a scRNA-seq expression matrix for the scRNA-seq cells.  imputation
+# (output) will contain an imputed scRNA-seq matrix for each of the ATAC cells
+imputation <- TransferData(anchorset = transfer.anchors, refdata = refdata, weight.reduction = integrated[["lsi19"]],
+    dims = 2:30)
+integrated[["RNA"]] <- imputation
+lung_RNA_adult$data<-"RNA"
+integrated$data<-"ATAC"
+coembed <- merge(x = lung_RNA_adult, y = integrated)
+
+
+#create RNA imp assay
+integrated[["RNA"]]<-imputation
+
+
+
+# Finally, we run PCA and UMAP on this combined object, to visualize the co-embedding of both
+# datasets
+coembed <- ScaleData(coembed, features = genes.use, do.scale = FALSE)
+coembed <- RunPCA(coembed, features = genes.use, verbose = FALSE)
+coembed <- RunUMAP(coembed, dims = 1:30)
+DimPlot(coembed,group.by = "patient")
+DimPlot(coembed,group.by = "celltype",label=T)+NoLegend()
+DimPlot(coembed,group.by = "data",label=T)+NoLegend()
+
+#now link peaks together in each of the batches
+
+
+DefaultAssay(integrated) <- "hg19_cre"
+
+Idents(integrated)<-"patient"
+coembed_pat1<-subset(integrated,idents="D231")
+
+DimPlot(coembed_pat1,group.by = "patient")
+DimPlot(coembed_pat1,group.by = "celltype",label=T)+NoLegend()
+DimPlot(coembed_pat1,group.by = "data",label=T)+NoLegend()
+
+
+rowRanges<-StringToGRanges(row.names(coembed_pat1))
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]<-StringToGRanges("chr17-1-488",sep = c("-","-"))
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+feature.metadata<-RegionStats(rowRanges, genome = BSgenome.Hsapiens.UCSC.hg19,verbose = TRUE)
+
+rownames(x = feature.metadata) <- rownames(x = coembed_pat1)
+coembed_pat1[["hg19_cre"]]<-AddMetaData(coembed_pat1[["hg19_cre"]],metadata = as.data.frame(feature.metadata))
+
+# first computed the GC content for each peak
+
+# link peaks to genes
+coembed_pat1  <- LinkPeaks(
+  object = coembed_pat1 ,
+  peak.assay = "hg19_cre",
+  expression.assay = "RNA",
+  genes.use = genes.use
+)
+
+
+coembed_pat2<-subset(integrated,idents="D122")
+
+DimPlot(coembed_pat2,group.by = "patient")
+DimPlot(coembed_pat2,group.by = "celltype",label=T)+NoLegend()
+DimPlot(coembed_pat2,group.by = "data",label=T)+NoLegend()
+
+
+rowRanges<-StringToGRanges(row.names(coembed_pat2))
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]<-StringToGRanges("chr17-1-488",sep = c("-","-"))
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+feature.metadata<-RegionStats(rowRanges, genome = BSgenome.Hsapiens.UCSC.hg19,verbose = TRUE)
+
+rownames(x = feature.metadata) <- rownames(x = coembed_pat2)
+coembed_pat2[["hg19_cre"]]<-AddMetaData(coembed_pat2[["hg19_cre"]],metadata = as.data.frame(feature.metadata))
+
+# first computed the GC content for each peak
+
+# link peaks to genes
+coembed_pat2  <- LinkPeaks(
+  object = coembed_pat2 ,
+  peak.assay = "hg19_cre",
+  expression.assay = "RNA",
+  genes.use = genes.use
+)
+
+coembed_pat3<-subset(integrated,idents="D231")
+
+DimPlot(coembed_pat3,group.by = "patient")
+DimPlot(coembed_pat3,group.by = "celltype",label=T)+NoLegend()
+DimPlot(coembed_pat3,group.by = "data",label=T)+NoLegend()
+
+
+rowRanges<-StringToGRanges(row.names(coembed_pat3))
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]<-StringToGRanges("chr17-1-488",sep = c("-","-"))
+rowRanges[which(seqnames(rowRanges) == "chr17")[1],]
+
+feature.metadata<-RegionStats(rowRanges, genome = BSgenome.Hsapiens.UCSC.hg19,verbose = TRUE)
+
+rownames(x = feature.metadata) <- rownames(x = coembed_pat3)
+coembed_pat3[["hg19_cre"]]<-AddMetaData(coembed_pat3[["hg19_cre"]],metadata = as.data.frame(feature.metadata))
+
+# first computed the GC content for each peak
+
+# link peaks to genes
+coembed_pat3  <- LinkPeaks(
+  object = coembed_pat3 ,
+  peak.assay = "hg19_cre",
+  expression.assay = "RNA",
+  genes.use = genes.use
+)
+
+saveRDS(integrated,"/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultscRNA/int_all.rds")
+saveRDS(coembed_pat1,"/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultscRNA/pat1_int_all.rds")
+saveRDS(coembed_pat2,"/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultscRNA/pat2_int_all.rds")
+saveRDS(coembed_pat3,"/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultscRNA/pat3_int_all.rds")
+
+
+
+Idents(lung_RNA_adult)<-"celltype"
+
+lung_RNA_adult <- FindNeighbors(lung_RNA_adult, dims = 1:20)
+lung_RNA_adult <- FindClusters(lung_RNA_adult, resolution = 0.1)
+
+p1<-DimPlot(lung_RNA_adult,label=T)+NoLegend()
+p2<-DimPlot(lung_RNA_adult,group.by = "celltype",label=T)+NoLegend()
+
+
+lung_RNA_adult$ct<-as.factor(Idents(lung_RNA_adult))
+
+levels(lung_RNA_adult$ct)<-c("Macrophages/Mono","Pneumocytes","Pneumocytes","Pneumocytes","Fibroblasts","T-cells","Macrophages/Mono","Cap","Goblet","Cilliated","Lymph","B-cells")
+
+Idents(lung_RNA_adult)<-"ct"
+
+select_markers<-FindMarkers(lung_RNA_adult,ident.1 = c("Pneumocytes"),only.pos = T)
+
+
+DimPlot(lung_RNA_adult)
+
+L1<-Links(coembed_pat1)
+L2<-Links(coembed_pat2)
+L3<-Links(coembed_pat3)
+
+L1_df<-as.data.frame(L1)
+row.names(L1_df)<-paste(L1_df$peak,L1_df$gene,sep = "_")
+
+L2_df<-as.data.frame(L2)
+row.names(L2_df)<-paste(L2_df$peak,L2_df$gene,sep = "_")
+
+L3_df<-as.data.frame(L3)
+row.names(L3_df)<-paste(L3_df$peak,L3_df$gene,sep = "_")
+
+union_set<-merge(L1_df,L2_df,by="row.names",all=T)
+row.names(union_set)<-union_set$Row.names
+union_set$Row.names<-NULL
+union_set[is.na(union_set)]<-0
+
+
+union_set<-merge(union_set,L3_df,by="row.names",all=T)
+row.names(union_set)<-union_set$Row.names
+union_set$Row.names<-NULL
+union_set[is.na(union_set)]<-0
+
+union_short_set<-data.frame(peak=str_split_fixed(row.names(union_set),pattern = "_",2)[,1],gene=str_split_fixed(row.names(union_set),pattern = "_",2)[,2],avg_score=(union_set$zscore.x+union_set$zscore.y+union_set$zscore)/3)
+
+
+union_short_set_gr<-StringToGRanges(union_short_set$peak)
+union_short_set_gr$gene=union_short_set$gene
+union_short_set_gr$avg_score=union_short_set$avg_score
+
+MO<-read.table(/brahms/torkenczyk/H_M_storage/analysis/bedfiles/Uniq2celline.m.Pneumocytes.hg19.bed")
+HO<-read.table(/brahms/torkenczyk/H_M_storage/analysis/bedfiles/Uniq2celline.h.Pneumocytes.hg19.bed")
+S<-read.table(/brahms/torkenczyk/H_M_storage/analysis/bedfiles/Shared2celline.Pneumocytes.hg19.bed")
+S2<-read.table(/brahms/torkenczyk/H_M_storage/analysis/bedfiles/Shared2celline.Pneumocyte.hg19.orig.incl.bed")
+
+M_granges<-StringToGRanges(paste(MO$V1,MO$V2,MO$V3,sep = "-"))
+H_granges<-StringToGRanges(paste(HO$V1,HO$V2,HO$V3,sep="-"))
+I_granges<-StringToGRanges(paste(S$V1,S$V2,S$V3,sep="-"))
+
+
+
+
+
+MO_Ol<-union_short_set_gr[subjectHits(findOverlaps(M_granges,subject = union_short_set_gr))]
+MO_Ol$orig_peak<-GRangesToString(M_granges[queryHits(findOverlaps(M_granges,subject = union_short_set_gr))])
+
+
+MO$orig_peak<-paste(MO$V1,MO$V2,MO$V3,sep = "-")
+MO_Ol_df<-as.data.frame(MO_Ol)
+
+MO_fin<-merge(x=MO,y=MO_Ol_df,all=T,by="orig_peak")
+MO_plot<-data.frame(peak=MO_fin$orig_peak,avg_score=MO_fin$avg_score)
+
+MO_plot$type="mouse"
+MO_plot2<-na.omit(MO_plot)
+MO_plot[is.na(MO_plot)]<-0
+ggplot(MO_plot,aes(x=type,y=avg_score))+geom_violin()+theme_classic()
+
+HO_Ol<-union_short_set_gr[unique(subjectHits(findOverlaps(H_granges,subject = union_short_set_gr)))]
+
+HO_Ol<-union_short_set_gr[subjectHits(findOverlaps(H_granges,subject = union_short_set_gr))]
+HO_Ol$orig_peak<-GRangesToString(H_granges[queryHits(findOverlaps(H_granges,subject = union_short_set_gr))])
+
+
+HO$orig_peak<-paste(HO$V1,HO$V2,HO$V3,sep = "-")
+HO_Ol_df<-as.data.frame(HO_Ol)
+
+HO_fin<-merge(x=HO,y=HO_Ol_df,all=T,by="orig_peak")
+HO_plot<-data.frame(peak=HO_fin$orig_peak,avg_score=HO_fin$avg_score)
+
+
+HO_plot$type="human"
+HO_plot2<-na.omit(HO_plot)
+HO_plot[is.na(HO_plot)]<-0
+ggplot(HO_plot,aes(x=type,y=avg_score))+geom_violin()+geom_boxplot()+theme_classic()
+
+
+
+
+I_Ol<-union_short_set_gr[unique(subjectHits(findOverlaps(I_granges,subject = union_short_set_gr)))]
+
+I_Ol$orig_peak<-GRangesToString(I_granges[queryHits(findOverlaps(I_granges,subject = union_short_set_gr))])
+
+
+S$orig_peak<-paste(S$V1,S$V2,S$V3,sep = "-")
+I_Ol_df<-as.data.frame(I_Ol)
+
+I_fin<-merge(x=S,y=I_Ol_df,all=T,by="orig_peak")
+I_plot<-data.frame(peak=I_fin$orig_peak,avg_score=I_fin$avg_score)
+
+
+I_plot$type="shared"
+I_plot2<-na.omit(I_plot)
+I_plot[is.na(I_plot)]<-0
+
+ggplot(I_plot,aes(x=type,y=avg_score))+geom_violin()+geom_boxplot()+theme_classic()
+
+
+all_comb<-rbind(MO_plot,HO_plot,I_plot)
+all_comb2<-rbind(MO_plot2,HO_plot2,I_plot2)
+
+ggplot(all_comb,aes(x=type,fill=type,y=avg_score))+geom_violin()+geom_boxplot()+theme_classic()
+ggplot(all_comb2,aes(x=type,fill=type,y=avg_score))+geom_violin()+geom_boxplot()+theme_classic()
+
+#JUST DE GENES now
+
+union_short_set_de<-union_short_set[union_short_set$gene %in% row.names(select_markers)[select_markers$p_val_adj<0.05],]
+union_short_set_gr<-StringToGRanges(union_short_set_de$peak)
+union_short_set_gr$gene=union_short_set_de$gene
+union_short_set_gr$avg_score=union_short_set_de$avg_score
+
+
+
+#HO_Ol<-union_short_set_gr[unique(subjectHits(findOverlaps(H_granges,subject = union_short_set_gr)))]
+HO_Ol<-union_short_set_gr[subjectHits(findOverlaps(H_granges,subject = union_short_set_gr))]
+HO_Ol$orig_peak<-GRangesToString(H_granges[queryHits(findOverlaps(H_granges,subject = union_short_set_gr))])
+HO$orig_peak<-paste(HO$V1,HO$V2,HO$V3,sep = "-")
+HO_Ol_df<-as.data.frame(HO_Ol)
+HO_fin<-merge(x=HO,y=HO_Ol_df,all=T,by="orig_peak")
+HO_plot<-data.frame(peak=HO_fin$orig_peak,avg_score=HO_fin$avg_score,gene=HO_fin$gene)
+HO_plot$type="human"
+HO_plot2<-na.omit(HO_plot)
+HO_plot[is.na(HO_plot)]<-0
+
+MO_Ol<-union_short_set_gr[subjectHits(findOverlaps(M_granges,subject = union_short_set_gr))]
+MO_Ol$orig_peak<-GRangesToString(M_granges[queryHits(findOverlaps(M_granges,subject = union_short_set_gr))])
+MO$orig_peak<-paste(MO$V1,MO$V2,MO$V3,sep = "-")
+MO_Ol_df<-as.data.frame(MO_Ol)
+MO_fin<-merge(x=MO,y=MO_Ol_df,all=T,by="orig_peak")
+MO_plot<-data.frame(peak=MO_fin$orig_peak,avg_score=MO_fin$avg_score,gene=MO_fin$gene)
+MO_plot$type="mouse"
+MO_plot2<-na.omit(MO_plot)
+MO_plot[is.na(MO_plot)]<-0
+
+I_Ol<-union_short_set_gr[unique(subjectHits(findOverlaps(I_granges,subject = union_short_set_gr)))]
+I_Ol$orig_peak<-GRangesToString(I_granges[queryHits(findOverlaps(I_granges,subject = union_short_set_gr))])
+S$orig_peak<-paste(S$V1,S$V2,S$V3,sep = "-")
+I_Ol_df<-as.data.frame(I_Ol)
+I_fin<-merge(x=S,y=I_Ol_df,all=T,by="orig_peak")
+I_plot<-data.frame(peak=I_fin$orig_peak,avg_score=I_fin$avg_score,gene=I_fin$gene)
+I_plot$type="shared"
+I_plot2<-na.omit(I_plot)
+I_plot[is.na(I_plot)]<-0
+
+all_comb_de<-rbind(MO_plot,HO_plot,I_plot)
+all_comb2_de<-rbind(MO_plot2,HO_plot2,I_plot2)
+
+ggplot(all_comb_de,aes(x=type,fill=type,y=avg_score))+geom_violin()+theme_classic()+theme_classic()+ylab("Average linkage score")+xlab("")
+ggplot(all_comb2_de,aes(x=type,fill=type,y=avg_score))+geom_violin()+geom_boxplot()+theme_classic()+ylab("Average linkage score")+xlab("")
+
+CoveragePlot(coembed_pat1,region = "WWC1",extend.upstream = 5000,extend.downstream = 5000,region.highlight = StringToGRanges("chr5-167718376-167718876"),group.by = "celltype",links = T,expression.assay = "RNA")
+
+
+
+
+
+CoveragePlot(coembed_pat1,region = "FOXA2",extend.upstream = 5000,extend.downstream = 5000,region.highlight = StringToGRanges("chr20-22564833-22565333"),group.by = "celltype",links = T,expression.assay = "RNA")
+
+
+write.csv(all_comb_de,"/home/torkenczyk/H_M_chromatin_atlas/human_data/Validation_linkage_res.csv")
+write.csv(all_comb2_de,"/home/torkenczyk/H_M_chromatin_atlas/human_data/Validation_linkage_res_only_int.csv")
+
+length(unique(MO_plot2$peak))/length(unique(MO_plot$peak))
+
+
+#"CTSH" "chr15-78993828-78994328"
+#ATF7IP2 chr16-10695288-10695788
+
+
+coembed_pat2$ct<-as.factor(coembed_pat2$celltype)
+levels(coembed_pat2$ct)<-c("Macrophages/Mono","AT1","AT2","T-cells","B-cells","T-cells","Fibroblasts","Endothelial","Endothelial","Myofibroblast","Erythrocyte","Endothelial","Fibroblasts","Pericyte","Club","Endothelial","Ciliated","Basal","Neurondocrine")
+Idents(coembed_pat2)<-coembed_pat2$ct
+
+lung_RNA_adult$ct2<-as.factor(lung_RNA_adult$RNA_snn_res.0.1)
+levels(lung_RNA_adult$ct2)<-c("Macrophages/Mono","AT2","AT2","AT1","Fibroblasts","T-cells","Macrophages/Mono","Cap","Goblet","Cilliated","Lymph","B-cells")
+
+Idents(lung_RNA_adult)<-"ct2"
+
+
+levs<-levels(lung_RNA_adult$ct2)
+levs[2]<-"Pneumocytes"
+levs[3]<-"Pneumocytes"
+levels(lung_RNA_adult$ct2)<-levs
+
+CoveragePlot(coembed_pat2,region = "CTSH",extend.upstream = 5000,extend.downstream = 50000,region.highlight = StringToGRanges("chr15-79286170-79286670"),group.by = "ct",links = T,expression.assay = "RNA")
+
+p1<-VlnPlot(coembed_pat2,features = "CTSH",assay = "RNA",group.by = "ct")
+p1bb<-VlnPlot(lung_RNA_adult,features = "CTSH",assay = "RNA",group.by = "ct2")+NoLegend()
+
+p1b<-VlnPlot(lung_RNA_adult,features = "WWC1",assay = "RNA",group.by = "ct2")+NoLegend()
+
+p1<-VlnPlot(coembed_pat2,features = "WWC1",assay = "RNA",group.by = "ct")+NoLegend()
+
+
+#added links from patients to integrate
+
+levels(integrated$ct)<-c("Pneumocyte","Pneumocyte","Endothelial","B-lymphocytes","Basal","Endothelial","Endothelial","Ciliated","Club","Erythrocyte","Endothelial","Macrophage","Fibroblast","Fibroblast","Myofibroblast","T-lymphocytes","Pericyte","NE","T-lymphocytes")
+
+
+
+p_hum1<-CoveragePlot(integrated,region = "CTSH",extend.upstream = 5000,extend.downstream = 50000,region.highlight = StringToGRanges("chr15-79286170-79286670"),group.by = "ct",links = T,expression.assay = "RNA")
+
+p_hum2<-CoveragePlot(integrated,region = "WWC1",extend.upstream = 5000,extend.downstream = 5000,region.highlight = StringToGRanges("chr5-167728749-167729249"),group.by = "ct",links = T,expression.assay = "RNA")
+
+
+
+# extract gene annotations from EnsDb
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+
+# change to UCSC style since the data was mapped to hg19
+seqlevelsStyle(annotations) <- 'UCSC'
+seqlevels(annotations)<-paste0("chr",seqlevels(annotations))
+
+# add the gene information to the object
+Annotation(M_subset) <- annotations
+
+
+M_subset$ct<-as.factor(Idents(M_subset))
+levs<-levels(M_subset$ct)
+levs[1]<-"Pneumocytes"
+levs[6]<-"Pneumocytes"
+levels(M_subset$ct)<-levs
+
+
+p_mouse1<-CoveragePlot(M_subset,region = "Ctsh",extend.upstream = 50000,extend.downstream = 5000,assay = "mm10",region.highlight = StringToGRanges("chr9-90007109-90007629"),group.by = "ct")
+p_mouse2<-CoveragePlot(M_subset,region = "Wwc1",extend.upstream = 50000,extend.downstream = 5000,assay = "mm10",region.highlight = StringToGRanges("chr11-35971356-35971819"),group.by = "ct")
+
+M_subsetmus
+
+
+#overlap with GWAS? NO
+
+sum(GWAS_all$coord_peak_hg38=="chr15_78993828_78994328")
+sum(GWAS_all$coord_peak_hg38=="chr15_63985749_63986249")
+sum(GWAS_all$coord_peak_hg38=="chr16_10601431_10601931")
+sum(GWAS_all$coord_peak_hg38=="chr18_23189946_23190446")
+sum(GWAS_all$coord_peak_hg38=="chr19_50215169_50215669")
+
+sum(GWAS_all$coord_peak_hg38=="chr2_227164005_227164505")
+sum(GWAS_all$coord_peak_hg38=="chr4_185303442_185303942")
+sum(GWAS_all$coord_peak_hg38=="chr6_75334266_75334766")
+
+
+
+sum(GWAS_all$coord_peak_hg38=="chr5_168291371_168291871")
+
+
+GWAS<-list.files("/home/torkenczyk/H_M_chromatin_atlas/human_data/GWAS_longda/Finemapping/Apr13/")
+
+for (gwas in GWAS)
+{
+#print(gwas)
+file_loc<-paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/GWAS_longda/Finemapping/Apr13/",gwas,"/")
+#<list.files(file_loc)
+if(length(list.files(file_loc))>0)
+{
+trait_shared<-read.table(file=paste0(file_loc,gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+
+#trait_human<-read.table(file=paste0(file_loc,"human_DA_",gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+#trait_mouse<-read.table(file=paste0(file_loc,"mouse_DA_",gwas,"_overlap_CHROM_sites_Mar07.txt"),header = T)
+
+if(dim(trait_shared)[1]>1)
+{
+trait_shared$coord<-paste0(paste0("chr",trait_shared$CHR),"-",trait_shared$POS+1,"-",trait_shared$POS+2)
+trait_shared$coord_peak_hg38<-apply(X = trait_shared[,22:34],MARGIN = 1,FUN=function(x){unique(sort(as.character(x)))[-1]})
+if (sum(trait_shared$coord_peak_hg38 %in% peaks_of_int) > 0 ){print(gwas)}
+}
+}
+}
+
+
+peaks_of_int<-c("chr15_63985749_63986249",
+"chr15_78993828_78994328",    
+"chr16_10601431_10601931", 
+"chr18_23189946_23190446",
+"chr19_50215169_50215669",  
+"chr2_227164005_227164505",
+"chr4_185303442_185303942",  
+"chr5_168301744_168302244",  
+"chr6_75334266_75334766",  
+"chr7_7956780_7957280")    
+
+
+```
+
+
+
 
 
 #validation in mouse
@@ -462,11 +1193,50 @@ M_subset[["Deviation_DA"]] <- CreateAssayObject(data = chromvar.hz)
 DefaultAssay(M_subset)<-"Deviation_DA"
 
 Idents(M_subset)<-M_subset$cell_type
+
+Idents(M_subset) <- factor(x = Idents(M_subset), levels = c("AT1","AT2","Sox2","Pericytes","Plvap","AVSM","Car4","Mesothelial","Interstitial_Fib","Wnt5","B-lymphocytes","T-lymphocytes","Macrophage_Monocyte_Neutrophils"))
+
+
 p1c<-RidgePlot(M_subset, features = row.names(M_subset), ncol = 3)
+
+GetAssayData()
+
+
 p1<-FeaturePlot(M_subset, features = "mouse",min.cutoff = 0,raster = F)
 p2<-FeaturePlot(M_subset, features = "human",min.cutoff = 0,raster = F)
 p3<-FeaturePlot(M_subset, features = "int",min.cutoff = 0,raster = F)
 
+M<-as.data.frame(t(GetAssayData(M_subset,assay = "Deviation_DA",slot = "data")))
+M$celltype<-M_subset[["cell_type"]]$cell_type
+H<-as.data.frame(t(GetAssayData(human_pn_val,assay = "Deviation_DA",slot = "data")))
+H$celltype<-Idents(human_pn_val)
+
+library(reshape2)
+M<-melt(M, id.vars=c("celltype"))
+H<-melt(H, id.vars=c("celltype"))
+
+M$variable<-factor(x = M$variable, levels = c("int","mouse","human"))
+H$variable<-factor(x = H$variable, levels = c("int","mouse","human"))
+
+M$celltype<-factor(x = M$celltype, levels = c("AT1","AT2","Sox2","Pericytes","Plvap","AVSM","Car4","Mesothelial","Interstitial_Fib","Wnt5","B-lymphocytes","T-lymphocytes","Macrophage_Monocyte_Neutrophils"))
+
+ggplot(M,aes(x=celltype,fill=variable,y=value))+geom_boxplot()+theme_classic()+ylab("Deviation of accessibility")+xlab("")
+
+
+H$celltype<-factor(x = H$celltype, levels = c("alveolar_type_1","alveolar_type_2","basal","ciliated","club","arterial_endothelial","capillary_endothelial_1","capillary_endothelial_2","lymphatic_endothelial","matrix_fibroblast_1","matrix_fibroblast_2","myofibroblast","pulmonary_neuroendocrine","erythrocyte","pericyte","nk_cell","b_cell","t_cell","macrophage"))   
+
+
+pm<-ggplot(M,aes(x=celltype,fill=variable,y=value))+geom_boxplot()+theme_classic()+ylab("Deviation of accessibility")+xlab("")+ theme(legend.position = "none") +scale_x_discrete(guide = guide_axis(angle = 45))
+
+ph<-ggplot(H,aes(x=celltype,fill=variable,y=value))+geom_boxplot()+theme_classic()+ylab("Deviation of accessibility")+xlab("")+ theme(legend.position = "none") +scale_x_discrete(guide = guide_axis(angle = 45))
+
+ph+pm
+
+  
+
+library(ggplot2)
+
+ggplot(M,aes(x=celltype,fill=variable,y=value))+geom_boxplot()
 
 annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
 
@@ -509,16 +1279,20 @@ M_subset[["mm10"]] <- CreateChromatinAssay(
 
 saveRDS(M_subset,"M_subset.rds")
 
-M_subset<-readRDS("M_subset.rds")
- 
+M_subset<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/validation/Mouse_pn_validation.rds")
+integrated<-readRDS(file="/brahms/torkenczyk/H_M_storage/analysis/objects/validation/adultAll.seurat.rds")
+mouse_select_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+human_all_atac<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
+
+
 
 ```
 
 #see if the chromvar results reproduce here as well
 
 ```{r}
-human_pn_val<-readRDS(file="/home/torkenczyk/H_M_chromatin_atlas/validation_sets/adult/All.seurat.rds")
-mouse_pn_val<-readRDS(file="/home/torkenczyk/H_M_chromatin_atlas/human_data/M_subset.rds")
+human_pn_val<-readRDS(file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultAll.seurat.rds")
+mouse_pn_val<-readRDS(file="/brahms/torkenczyk/H_M_storage/analysis/objects/validation/Mouse_pn_validation.rds")
 
 library(BSgenome.Mmusculus.UCSC.mm10)
 library(BSgenome.Hsapiens.UCSC.hg19)
@@ -591,6 +1365,11 @@ table(Idents(human_pn_val))
 table(Idents(mouse_pn_val))
 
 
+saveRDS(human_pn_val,file="/brahms/torkenczyk/H_M_storage/analysis/pneumocyte_val/adultAll.seurat.rds")
+saveRDS(mouse_pn_val,file="/brahms/torkenczyk/H_M_storage/analysis/objects/validation/Mouse_pn_validation.rds")
+
+
+
 #rough mathcup for now
 
 #human celltype rename
@@ -648,14 +1427,19 @@ VlnPlot(human_pn_val,features = names(query_mot),group.by = "ctorig")|VlnPlot(mo
 #read in all shared markers from original 
 all<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/chromvar_shared.txt")
 
-ls<-unlist(GetMotifData(object = human_pn_val, assay = "hg19_fixed", slot = "motif.names"))
+ls<-unlist(GetMotifData(object = human_all_atac, assay = "cre", slot = "motif.names"))
 motif_labels<-ls[match(all$x,names(ls))]
 
-p1<-DotPlot(human_pn_val,assay = "chromvar",features =  all,cols=c('#3182bd',"#de2d26"),idents = "Pneumocytes",) + theme(legend.position="top")+ggtitle(label = "Human") +ylab(label = "")
-ggsave(p1,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Human_chromvar_validation_dotplot.pdf",width = 10,height = 7.5)
+
+all$motif<-motif_labels
+
+write.table(all,"/home/torkenczyk/H_M_chromatin_atlas/human_data/chromvar_shared.txt",sep = "\t",quote = F,col.names = T)
+
+p1<-DotPlot(human_pn_val,assay = "chromvar",features =  all,cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Human") +ylab(label = "")
+ggsave(p1,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Human_chromvar_validation_dotplot.pdf",width = 10,height = 7.5)
 
 p2<-DotPlot(mouse_pn_val,assay = "chromvar",features = all,cols=c('#3182bd',"#de2d26"))+ theme(legend.position="top")+ggtitle(label = "Mouse") 
-ggsave(p2,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_chromvar_validation_dotplot.pdf",width = 10,height = 7.5)
+ggsave(p2,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Mouse_chromvar_validation_dotplot.pdf",width = 10,height = 7.5)
 
 
 p_human<-p1 + scale_x_discrete(labels=motif_labels)+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
@@ -663,7 +1447,7 @@ p_mouse<-p2 + scale_x_discrete(labels=motif_labels)+theme(axis.title.y=element_b
 
 P_shared<-p_human | p_mouse
 
-ggsave(P_shared,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_human_chromvar_dotplot.pdf",width = 20,height = 7.5)
+ggsave(P_shared,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Mouse_human_chromvar_dotplot.pdf",width = 20,height = 7.5)
 
 
 #lets just select the ones that are shared with the original
@@ -688,13 +1472,14 @@ p1_orig<-DotPlot(human_all_atac,assay = "chromvar",idents = human_in_orig,featur
 p1_orig<-p1_orig + scale_x_discrete(labels=motif_labels[-c(11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
 
 #reordered
-validation_1<-DotPlot(human_pn_val,assay = "chromvar",features =  all$x[-c(11:15,26,27,33:42,48:51,57:61)],cols=c('#3182bd',"#de2d26"),idents = human_in)+ theme(legend.position="top")+ggtitle(label = "Human validation") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")+theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
+validation_1<-DotPlot(human_pn_val,assay = "chromvar",features =  all$x[-c(11:15,26,27,33:42,48:51,57:61)],cols=c('#3182bd',"#de2d26"),idents = human_in)+ theme(legend.position="top")+ggtitle(label = "Human validation") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
++theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
 
 
 p_human_human_validation_plot<-p1_orig|validation_1
 
 
-ggsave(p_human_human_validation_plot,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/human_human_validation_dotplot.pdf",width = 20,height = 7.5)
+ggsave(p_human_human_validation_plot,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/human_human_validation_dotplot.pdf",width = 20,height = 7.5)
 
 
 
@@ -714,13 +1499,14 @@ features =  all$x[-c(1:5,11:15,26,27,33:42,48:51,57:61)]
 
 p2_orig<-DotPlot(mouse_select_atac,idents = mouse_in_orig,assay = "chromvar",features =  features,cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse original") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(1:5,11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
 
-validation_2<-DotPlot(mouse_pn_val,idents = mouse_in,assay = "chromvar",features =  features,cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse validation") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(1:5,11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")+theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
+validation_2<-DotPlot(mouse_pn_val,idents = mouse_in,assay = "chromvar",features =  features,cols=c('#3182bd',"#de2d26")) + theme(legend.position="top")+ggtitle(label = "Mouse validation") +ylab(label = "")+ scale_x_discrete(labels=motif_labels[-c(1:5,11:15,26,27,33:42,48:51,57:61)])+theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))+xlab(label = "")
++theme(axis.title.y=element_blank(),axis.text.y=element_blank(),axis.ticks.y=element_blank())
 
 
 p_mouse_mouse_validation_plot<-p2_orig|validation_2
 
 
-ggsave(p_mouse_mouse_validation_plot,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/mouse_mouse_validation_dotplot.pdf",width = 20,height = 7.5)
+ggsave(p_mouse_mouse_validation_plot,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/mouse_mouse_validation_dotplot.pdf",width = 20,height = 7.5)
 
 #Now lets look at whether mouse only and human only reproduces
 DefaultAssay(human_all_atac)<-"chromvar"
@@ -805,7 +1591,7 @@ p2_orig_ho<-p2_orig_ho + scale_x_discrete(labels=motif_labels_h)+theme(axis.text
 
 p1_orig_ho+p2_orig_ho
 
-ggsave(p1_orig_ho+p2_orig_ho,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Human_only_orig_dotplot.pdf",width = 20,height = 7.5)
+ggsave(p1_orig_ho+p2_orig_ho,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Human_only_orig_dotplot.pdf",width = 20,height = 7.5)
 
 
 
@@ -825,7 +1611,7 @@ p2_orig_mo<-p2_orig_mo + scale_x_discrete(labels=motif_labels_m)+theme(axis.text
 p1_orig_mo+p2_orig_mo
 
 
-ggsave(p1_orig_mo+p2_orig_mo,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_only_orig_dotplot.pdf",width = 20,height = 7.5)
+ggsave(p1_orig_mo+p2_orig_mo,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Mouse_only_orig_dotplot.pdf",width = 20,height = 7.5)
 
 
 #use these TFs for the validation data
@@ -849,16 +1635,167 @@ p1_orig_mo+validation_2_a_m
 p2_orig_mo+validation_2_b_m
 
 
-ggsave(p1_orig_ho+validation_2_a_h,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Human_val_orig_dotplot.pdf",width = 20,height = 7.5)
+ggsave(p1_orig_ho+validation_2_a_h,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Human_val_orig_dotplot.pdf",width = 20,height = 7.5)
 
-ggsave(p2_orig_ho+validation_2_b_h,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_val_orig_h_only_dotplot.pdf",width = 20,height = 7.5)
+ggsave(p2_orig_ho+validation_2_b_h,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Mouse_val_orig_h_only_dotplot.pdf",width = 20,height = 7.5)
 
-ggsave(p1_orig_mo+validation_2_a_m,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Human_val_orig_m_only_dotplot.pdf",width = 20,height = 7.5)
+ggsave(p1_orig_mo+validation_2_a_m,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Human_val_orig_m_only_dotplot.pdf",width = 20,height = 7.5)
 
-ggsave(p2_orig_mo+validation_2_b_m,filename = "/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Mouse_val_orig_m_only_dotplot.pdf",width = 20,height = 7.5)
+ggsave(p2_orig_mo+validation_2_b_m,filename = "/brahms/torkenczyk/H_M_storage/analysis/plots/paper_pdfs/Mouse_val_orig_m_only_dotplot.pdf",width = 20,height = 7.5)
 
+#plot 
 
+a<-plot_combined_cross_species(gene = "NKX2-1",plot_by = "handannot",validate = T)
+mouse_select_atac
+wrap_plots(list(a$human_val,a$mouse_val,a$human_cre,a$mouse_orig),ncol = 2,nrow = 2)
 
 ```
 
+
+#also lets see if motif stuff can be selected for via DA
+```{r}
+
+DefaultAssay(human_all_atac)<-"cre"
+DefaultAssay(mouse_select_atac)<-"cre"
+
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Shared.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Mouse_only.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Human_only.bw.species.DA.RData")
+
+
+#read in all shared markers from original 
+all<-read.delim("/home/torkenczyk/H_M_chromatin_atlas/human_data/chromvar_shared.txt")
+
+ls<-unlist(GetMotifData(object = human_pn_val, assay = "hg19_fixed", slot = "motif.names"))
+motif_labels<-ls[match(all$x,names(ls))]
+
+enriched.motifs_MF <- FindMotifs(
+  object = human_all_atac,
+  features = shared_DA$Myofibroblasts$feature_hg38_universal
+)
+
+enriched.motifs_MF_h <- FindMotifs(
+  object = human_all_atac,
+  features = human_DA$Myofibroblasts$feature_hg38_universal
+)
+
+enriched.motifs_MF_m <- FindMotifs(
+  object = human_all_atac,
+  features = mouse_DA$Myofibroblasts$feature_hg38_universal
+)
+
+enriched.motifs_MF2 <- FindMotifs(
+  object = mouse_select_atac,
+  features = shared_DA$Myofibroblasts$feature_hg38_universal
+)
+
+enriched.motifs_MF[all$x[1:5],]
+enriched.motifs_MF_h[all$x[1:5],]
+enriched.motifs_MF_m[all$x[1:5],]
+
+enriched.motifs_MF2[all$x[1:5],]
+
+enriched.motifs_BL_sh <- FindMotifs(
+  object = human_all_atac,
+  features = shared_DA$`B-lymphocytes`$feature_hg38_universal
+)
+
+enriched.motifs_BL_h <- FindMotifs(
+  object = human_all_atac,
+  features = human_DA$`B-lymphocytes`$feature_hg38_universal
+)
+enriched.motifs_BL_m <- FindMotifs(
+  object = human_all_atac,
+  features = mouse_DA$`B-lymphocytes`$feature_hg38_universal
+)
+
+sh<-enriched.motifs_BL_sh[all$x[6:10],]$fold.enrichment
+h<-enriched.motifs_BL_h[all$x[6:10],]$fold.enrichment
+m<-enriched.motifs_BL_m[all$x[6:10],]$fold.enrichment
+
+enriched.motifs_EC_sh <- FindMotifs(
+  object = human_all_atac,
+  features = shared_DA$Enterocytes$feature_hg38_universal
+)
+
+enriched.motifs_EC_h <- FindMotifs(
+  object = human_all_atac,
+  features = human_DA$Enterocytes$feature_hg38_universal
+)
+enriched.motifs_EC_m <- FindMotifs(
+  object = human_all_atac,
+  features = mouse_DA$Enterocytes$feature_hg38_universal
+)
+
+sh<-enriched.motifs_EC_sh[all$x[11:15],]$fold.enrichment
+h<-enriched.motifs_EC_h[all$x[11:15],]$fold.enrichment
+m<-enriched.motifs_EC_m[all$x[11:15],]$fold.enrichment
+
+
+
+all$name<-motif_labels
+
+#Cardiomyocytes","Endothelial cells","Smooth muscle cells","Macrophages","Hepatocytes","Schwann cells","Fibroblasts","Goblet cells","T-lymphocytes","Pneumocytes","Enterocytes","B-lymphocytes","Myofibroblasts
+
+all$celltype<-c(rep("Myofibroblasts",times=5),rep("B-lymphocytes",times=5),rep("Enterocytes",times=5),rep("Pneumocytes",times=5),rep("T-lymphocytes",times=5),rep("Goblet cells",times=2),rep("Fibroblasts",times=5),rep("Schwann cells",times=5),rep("Hepatocytes",times=5),rep("Macrophages",times=5),rep("Smooth muscle cells",times=4),rep("Endothelial cells",times=5),rep("Cardiomyocytes",times=5))
+
+ha = HeatmapAnnotation(bar = sample(letters[1:3], 10, replace = TRUE),
+    col = list(bar = c("a" = "red", "b" = "green", "c" = "blue")))
+
+
+DA_enrichments<-list()
+for (i in c("Cardiomyocytes","Endothelial cells","Smooth muscle cells","Macrophages","Hepatocytes","Schwann cells","Fibroblasts","Goblet cells","T-lymphocytes","Pneumocytes","Enterocytes","B-lymphocytes","Myofibroblasts")){
+
+enriched.motifs_sh <- FindMotifs(
+  object = human_all_atac,
+  features = shared_DA[[i]]$feature_hg38_universal
+)
+
+enriched.motifs_h <- FindMotifs(
+  object = human_all_atac,
+  features = human_DA[[i]]$feature_hg38_universal
+)
+
+enriched.motifs_m <- FindMotifs(
+  object = mouse_select_atac,
+  features = mouse_DA[[i]]$mm9_lifted_mm10peak_mouse
+)
+
+subset_motif_names<-all[all$celltype==i,1]  
+
+sh<-enriched.motifs_sh[subset_motif_names,]
+h<-enriched.motifs_h[subset_motif_names,]
+m<-enriched.motifs_m[subset_motif_names,]
+sh$annot<-"shared"
+h$annot<-"human"
+m$annot<-"mouse"
+
+DA_enrichments[[i]]<-rbind(sh,h,m)
+
+
+}
+
+
+
+DA_enrichments_all<-bind_rows(DA_enrichments, .id = "celltype")
+write.table(DA_enrichments_all,"/home/torkenczyk/H_M_chromatin_atlas/human_data/Enrichment_Top5_TF_in_DA.txt")
+ggplot(DA_enrichments_all,aes(x=celltype,y=-log10(pvalue),color=fold.enrichment,fill=motif.name))+geom_bar(stat="identity")+theme_classic()
+
+ggplot(DA_enrichments_all,aes(x=annot,y=-log10(pvalue),fill=annot))+geom_boxplot()+theme_classic()
+DA_enrichments_all$log10=-log10(DA_enrichments_all$pvalue)
+library(ggpubr)
+
+# Visualize: Specify the comparisons you want
+my_comparisons <- list( c("mouse", "shared"),c("shared","human"))
+p_top5mot<-ggboxplot(DA_enrichments_all, x = "annot",fill="annot",y = "log10", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 155)+ylab("Top 5 motif enrichment in sites -log10(p)")
+
+
+
+
+sh/h
+sh/m
+
+```
 

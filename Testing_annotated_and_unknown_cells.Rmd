@@ -1,0 +1,180 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+
+deviation_across_peaks<-function(object,assay="cre",peaks)
+{
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(chromVAR)
+library(motifmatchr)
+library(Matrix)
+library(SummarizedExperiment)
+have_reads<-human_all_atac[[assay]][[]][object[[assay]][[]]$count>0,]  
+rowRanges<-StringToGRanges(row.names(have_reads))
+matched<-row.names(have_reads) %in% peaks
+matched_df=data.frame(peaks=matched)
+anno <- getAnnotations(annotations = matched_df, rowRanges = rowRanges)
+fragments <- SummarizedExperiment(assays = list(counts = GetAssayData(object, assay = assay, slot = "counts")[row.names(have_reads),]), rowRanges = rowRanges)
+fragments <- filterPeaks(fragments, non_overlapping = TRUE)
+fragments <- addGCBias(fragments, genome=BSgenome.Hsapiens.UCSC.hg38)
+dev <- computeDeviations(object = fragments, annotations = anno)
+
+chromvar.hz <- SummarizedExperiment::assays(dev)[[2]]
+return(chromvar.hz)
+
+}
+```
+
+Unkown cells
+
+
+```{r}
+
+#This is where I should subset mouse to Unknown and show examples
+
+m_unkown<-subset(mouse_select_atac,subset=cell_label=="Unknown")
+
+table(mouse[[]]$cell_label,mouse[[]]$handannot)
+
+
+#Myofibroblast
+CoveragePlot(m_unkown,region = "ACTA2",assay = "cre")
+CoveragePlot(m_unkown,region = "DES",assay = "cre")
+CoveragePlot(m_unkown,region = "TAGLN",assay = "cre")
+CoveragePlot(m_unkown,region = "MYH11",assay = "cre")
+
+
+write.csv(ClosestFeature(human_all_atac,regions = shared_DA$Pneumocytes$feature_hg38_universal),file = "/home/torkenczyk/PNE_marker_genes.csv",quote = F)
+#Pneumocytes
+CoveragePlot(m_unkown,region = "IRX2",assay = "cre")
+CoveragePlot(human_all_atac,region = "ABCA4",assay = "cre")|CoveragePlot(mouse_select_atac,region = "ABCA4",assay = "cre")
+CoveragePlot(mouse_select_atac,region = "MUC1",assay = "cre")
+
+
+
+
+
+DotPlot(m_unkown,assay = "RNA",features = c("ACTA2","DES","TAGLN","MYH11","NKX2-1","IRX2"))
+
+
+#Maybe do deviation 
+
+
+table(m_unkown$handannot)
+
+Myofibroblasts_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Myofibroblasts$feature_hg38_universal)
+Blymphocytes_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`B-lymphocytes`$feature_hg38_universal)
+Tlymphocytes_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`T-lymphocytes`$feature_hg38_universal)
+Enterocytes_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Enterocytes$feature_hg38_universal)
+Goblet_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`Goblet cells`$feature_hg38_universal)
+Fibroblasts_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Fibroblasts$feature_hg38_universal)
+Pneumocytes_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Pneumocytes$feature_hg38_universal)
+Sch_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`Schwann cells`$feature_hg38_universal)
+Mac_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Macrophages$feature_hg38_universal)
+SM_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`Smooth muscle cells`$feature_hg38_universal)
+End_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$`Endothelial cells`$feature_hg38_universal)
+Hep_ex<-deviation_across_peaks(object = m_unkown,assay = "cre",peaks = shared_DA$Hepatocytes$feature_hg38_universal)
+
+DimPlot(m_unkown,label = T)
+
+row.names(Myofibroblasts_ex)<-"Myofibroblasts"
+row.names(Blymphocytes_ex)<-"B-lymphocytes"
+row.names(Tlymphocytes_ex)<-"T-lymphocytes"
+row.names(Enterocytes_ex)<-"Enterocytes"
+row.names(Goblet_ex)<-"Goblet cells"
+row.names(Fibroblasts_ex)<-"Fibroblasts"
+row.names(Pneumocytes_ex)<-"Pneumocytes"
+row.names(Sch_ex)<-"Schwann cells"
+row.names(SM_ex)<-"Smooth muscle cells"
+row.names(Pneumocytes_ex)<-"Pneumocytes"
+row.names(Mac_ex)<-"Macrophages"
+row.names(End_ex)<-"Endothelial cells"
+row.names(Hep_ex)<-"Hepatocytes"
+
+all_dev<-rbind(End_ex,SM_ex,Mac_ex,Sch_ex,Fibroblasts_ex,Goblet_ex,Pneumocytes_ex,Blymphocytes_ex,Myofibroblasts_ex)
+
+m_unkown[["ktop_st"]]<-CreateAssayObject(data = all_dev)
+bottom<-DotPlot(m_unkown,assay = "ktop_st",features = row.names(all_dev),group.by = "handannot",idents = row.names(all_dev))+xlab(label = "")+ylab(label = "")
+
+all_CT_count<-as.data.frame(as.matrix(table(m_unkown$handannot)))
+CT_subset<-data.frame(names=row.names(all_dev),counts=all_CT_count[row.names(all_dev),])
+row.names(CT_subset)<-factor(CT_subset$names,levels = row.names(CT_subset))
+
+CT_subset$names<-factor(CT_subset$names,levels = row.names(CT_subset))
+
+
+Top<-ggplot(CT_subset,aes(x=names,y=counts)) + geom_bar(stat="identity")+theme_classic()+xlab(label = "")
+
+all_output<-wrap_plots(Top,bottom,ncol = 1,nrow = 2)
+#saved as pdf
+
+```
+
+previously annotated
+
+
+```{r}
+
+
+
+
+human<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_human_tissues.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_mouse_tissues.rds")
+integrated<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Final_integration_all_bins_CCA_remove_removed.rds")
+
+previously_annotated_mouse<-integrated[[]][!(integrated$celltype == "unknown" | integrated$celltype == "Unknown") & integrated$species == "mouse",]
+previously_annotated_human<-integrated[[]][!(integrated$celltype == "unknown" | integrated$celltype == "Unknown") & integrated$species == "human",]
+previously_annotated_all<-integrated[[]][!(integrated$celltype == "unknown" | integrated$celltype == "Unknown"),]
+
+table(previously_annotated_human$real_ident,previously_annotated_human$celltype)
+table(previously_annotated_mouse$real_ident,previously_annotated_mouse$celltype)
+
+previously_annotated_mouse[,]
+
+original_mouse<-as.factor(previously_annotated_mouse$celltype)
+library("plyr")
+levels(original_mouse)
+"Activated B cells" = "B-lymphocytes"
+
+
+renamed_original_mouse<-revalue(original_mouse, c("Activated B cells" = "B-lymphocytes","B cells" = "B-lymphocytes","Immature B cells"= "B-lymphocytes","Type I pneumocytes" = "Pneumocytes" ,"Type II pneumocytes" = "Pneumocytes","Dendritic cells" = "Macrophages","Hematopoietic progenitors"="Macrophages","Microglia" = "Macrophages", "Monocytes" = "Macrophages","NK cells"= "T-lymphocytes","Regulatory T cells" = "T-lymphocytes","T cells" = "T-lymphocytes","Endothelial I (glomerular)" = "Endothelial cells","Endothelial I cells"= "Endothelial cells","Endothelial II cells" = "Endothelial cells"))
+
+previously_annotated_mouse$renamed_factor_for_comparison<-renamed_original_mouse
+
+
+sum(as.character(previously_annotated_mouse$renamed_factor_for_comparison)==as.character(previously_annotated_mouse$real_ident))
+sum(as.character(previously_annotated_mouse$renamed_factor_for_comparison)!=as.character(previously_annotated_mouse$real_ident))
+
+mismatched<-previously_annotated_mouse[as.character(previously_annotated_mouse$renamed_factor_for_comparison)!=as.character(previously_annotated_mouse$real_ident),]
+
+mismatched_previously_annot_mouse_cells<-row.names(mismatched)
+
+
+mouse_annot_obj<-subset(mouse,cells=mismatched_previously_annot_mouse_cells)
+
+
+
+Myofibroblasts_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$Myofibroblasts$feature_hg38_universal)
+Blymphocytes_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$`B-lymphocytes`$feature_hg38_universal)
+Tlymphocytes_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$`T-lymphocytes`$feature_hg38_universal)
+Enterocytes_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$Enterocytes$feature_hg38_universal)
+Goblet_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$`Goblet cells`$feature_hg38_universal)
+Fibroblasts_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$Fibroblasts$feature_hg38_universal)
+Pneumocytes_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$Pneumocytes$feature_hg38_universal)
+Sch_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$`Schwann cells`$feature_hg38_universal)
+Mac_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$Macrophages$feature_hg38_universal)
+SM_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$`Smooth muscle cells`$feature_hg38_universal)
+End_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$`Endothelial cells`$feature_hg38_universal)
+Hep_ex<-deviation_across_peaks(object = mouse_annot_obj,assay = "cre",peaks = shared_DA$Hepatocytes$feature_hg38_universal)
+
+
+
+
+```
+
+
+

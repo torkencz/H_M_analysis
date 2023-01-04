@@ -1,0 +1,1300 @@
+---
+title: "Multi_tissue"
+author: "Kristof Torkenczy"
+date: "3/1/2021"
+output: html_document
+---
+
+This is the script I initially used to create the combined mouse and human objects
+
+
+Dependencies
+```{r setup, include=FALSE}
+#dependencies
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(EnsDb.Mmusculus.v79)
+library(EnsDb.Mmusculus.v75)
+library(ggplot2)
+library(patchwork)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(stringr)
+library(GenomicRanges)
+library(ComplexHeatmap)
+library(circlize)
+```
+
+
+Read in liver human data
+```{r liverh}
+set.seed(1235)
+counts_liver <- read.table("/brahms/torkenczyk/H_M_storage/matrices/GSM5047855_liver_SM-A8WNZ_matrix.mtx.gz",skip = 3)
+rows_liver <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047855_liver_SM-A8WNZ_features.txt.gz")
+cols_liver<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047855_liver_SM-A8WNZ_barcodes.txt.gz")
+
+LIVER_H<-sparseMatrix(i=counts_liver[,1],j=counts_liver[,2],x=counts_liver[,3])
+colnames(LIVER_H)<-cols_liver$V1
+# I have to shrink ranges
+
+
+resize<-StringToGRanges(rows_liver$V1,sep = c(":", "-"))
+end(resize)<-end(resize)-1
+start(resize)<-start(resize)+1
+
+row.names(LIVER_H)<-GRangesToString(resize)
+
+
+all_data<- read.table(
+  file = " /brahms/torkenczyk/H_M_storage/GSE165659_clustering_results.txt",
+  header = TRUE,
+  row.names = 1
+)
+
+all_data$cluster_match<-paste0("C",all_data$Cluster)
+
+add_cols<-data.frame(str_split_fixed(gsub(pattern = "\\+",replacement = "-",x=row.names(all_data)),pattern = "-",3))
+names(add_cols)<-c("tissue","ID1","barc")
+
+all_data<-cbind(all_data,add_cols)
+cluster_annot<-read.delim(
+  file = " /brahms/torkenczyk/H_M_storage/cluster_annot_all_human_data.txt",
+)
+
+metadata_human<-merge(x = all_data,y=cluster_annot,by.x="cluster_match",by.y="Cluster",all.x=T)
+
+
+metadata_human_liver<-metadata_human[metadata_human$tissue=="liver_SM",]
+
+human_liver_atac_assay <- CreateChromatinAssay(
+  counts = LIVER_H,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/Liver_sorted.frag.gz',
+  min.cells = 1
+)
+
+row.names(metadata_human_liver)<-metadata_human_liver$barc
+
+human_liver1_atac <- CreateSeuratObject(
+  counts = human_liver_atac_assay,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_liver
+)
+
+# extract gene annotations from EnsDb
+annotations_human <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+# change to UCSC style 
+seqlevelsStyle(annotations_human) <- 'UCSC'
+genome(annotations_human) <- "hg38"
+
+# add the gene information to the object
+Annotation(human_liver1_atac) <- annotations_human
+
+human_liver1_atac <- RunTFIDF(human_liver1_atac)
+human_liver1_atac <- FindTopFeatures(human_liver1_atac, min.cutoff = 'q0')
+human_liver1_atac <- RunSVD(human_liver1_atac)
+human_liver1_atac <- RunUMAP(object = human_liver1_atac, reduction = 'lsi', dims = 2:30)
+p1liver<-DimPlot(object = human_liver1_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human liver")
+saveRDS(human_liver1_atac,file = "Human_liver.rds")
+
+```
+
+
+```{r liver}
+#mm9 mouse
+ALL_M <- readRDS("/brahms/torkenczyk/H_M_storage/matrices/atac_matrix.binary.qc_filtered.rds")
+all_data_m<- read.delim(
+  file = "/brahms/torkenczyk/H_M_storage/cell_metadata.txt",
+ # header = TRUE,
+ # row.names = 1
+)
+
+mouse_atac_assay <- CreateChromatinAssay(
+  counts = ALL_M,
+  sep = c("_", "_"),
+  genome = "mm9",
+ # fragments = '../mouse_data/fragment_files/',
+#  min.cells = 1
+)
+
+row.names(all_data_m)<-all_data_m$cell
+
+mouse_all_atac <- CreateSeuratObject(
+  counts = mouse_atac_assay,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = all_data_m
+)
+
+# extract gene annotations from EnsDb
+annotations_mm9 <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v75)
+
+# change to UCSC style 
+seqlevelsStyle(annotations_mm9) <- 'UCSC'
+genome(annotations_mm9) <- "mm9"
+
+# add the gene information to the object
+Annotation(mouse_all_atac) <- annotations_mm9
+
+
+mouse_all_atac <- RunTFIDF(mouse_all_atac)
+mouse_all_atac <- FindTopFeatures(mouse_all_atac, min.cutoff = 'q0')
+mouse_all_atac <- RunSVD(mouse_all_atac)
+mouse_all_atac <- RunUMAP(object = mouse_all_atac, reduction = 'lsi', dims = 2:30)
+pall_mouse<-DimPlot(object = mouse_all_atac, label = TRUE,group.by = 'cell_label')+ggplot2::ggtitle("Mouse all available data")
+
+pall_tissue_mouse<-DimPlot(object = mouse_all_atac, label = TRUE,group.by = 'tissue')+ggplot2::ggtitle("Mouse all available data")
+
+
+#subset to comparable tissues
+mouse_select_atac<-subset(mouse_all_atac,subset = tissue == "Liver" | tissue == "Lung" | tissue == "SmallIntestine" | tissue == "LargeIntestine" | tissue == "Heart")
+
+
+mouse_select_atac <- RunTFIDF(mouse_select_atac)
+mouse_select_atac <- FindTopFeatures(mouse_select_atac, min.cutoff = 'q50')
+mouse_select_atac <- RunSVD(mouse_select_atac)
+mouse_select_atac <- RunUMAP(object = mouse_select_atac, reduction = 'lsi', dims = 2:30)
+pall_select_mouse1<-DimPlot(object = mouse_select_atac, label = TRUE,group.by = 'cell_label')+ggplot2::ggtitle("Mouse all comparison data")
+pall_select_mouse2<-DimPlot(object = mouse_select_atac, label = TRUE,group.by = 'tissue')+ggplot2::ggtitle("Mouse all comparison data")
+
+saveRDS(mouse_select_atac,file="/brahms/torkenczyk/H_M_storage/analysis/objects/All_mouse_tissues.rds")
+
+#subset to liver
+mouse_liver_atac<-subset(mouse_all_atac,subset = tissue == "Liver")
+
+
+mouse_liver_atac <- RunTFIDF(mouse_liver_atac)
+mouse_liver_atac <- FindTopFeatures(mouse_liver_atac, min.cutoff = 'q0')
+mouse_liver_atac <- RunSVD(mouse_liver_atac)
+mouse_liver_atac <- RunUMAP(object = mouse_liver_atac, reduction = 'lsi', dims = 2:30)
+p2liver<-DimPlot(object = mouse_liver_atac, label = TRUE,group.by = 'cell_label')+ggplot2::ggtitle("Mouse liver")
+
+p1liver+p2liver
+```
+
+#cell annotation fractions
+```{r allrh}
+
+
+metadata_human
+
+mouse_comp<-data.frame(all_data_m$tissue,all_data_m$cell_label)
+
+human_comp<-data.frame(metadata_human$tissue,metadata_human$Cell.Type)
+
+levels(as.factor(mouse_comp$all_data_m.tissue))
+levels(as.factor(human_comp$metadata_human.tissue))
+
+INM<-as.matrix(as.data.frame.matrix(table(mouse_comp)))
+INH<-as.matrix(as.data.frame.matrix(table(human_comp)))
+IN_chM=t(apply(INM, 1, function(i) i/sum(i)))
+IN_chH=t(apply(INH, 1, function(i) i/sum(i)))
+
+INselectM<-INM[c(3,5,6,7,9),]
+INselectH<-INH[c(10,11,5,6,21,12,13),]
+
+#more than 5 cells
+INH<-INselectH[,colSums(INselectH != 0) > 0]
+INM<-INselectM[,colSums(INselectM != 0) > 0]
+
+
+col_fun1M = colorRamp2(c(0,max(INM)),colors=c("white","#b2182b"))
+col_fun2M = colorRamp2(c(0,max(IN_chM)),colors=c("white","#b2182b"))
+col_fun1H = colorRamp2(c(0,max(INH)),colors=c("white","#b2182b"))
+col_fun2H = colorRamp2(c(0,max(IN_chM)),colors=c("white","#b2182b"))
+
+
+
+H1M <- Heatmap(INM,col=col_fun1M,cluster_rows = FALSE,cluster_columns = FALSE,
+    cell_fun = function(j, i, x, y, width, height, fill) {
+        grid.text(sprintf("%i", INM[i, j]), x, y, gp = gpar(fontsize = 10))
+})
+
+H1H <- Heatmap(INH,col=col_fun1H,cluster_rows = FALSE,cluster_columns = FALSE,
+    cell_fun = function(j, i, x, y, width, height, fill) {
+        grid.text(sprintf("%i", INH[i, j]), x, y, gp = gpar(fontsize = 10))
+})
+
+
+pdf("MOUSE_Select_table.pdf",width=15,height=10)
+H1M
+dev.off()
+
+
+pdf("HUMAN_Select_table.pdf",width=15,height=10)
+H1H
+dev.off()
+
+
+```
+
+
+Read heart human data
+```{r liverh}
+set.seed(1235)
+counts_heart <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047854_heart_lv_SM-JF1NY_matrix.mtx.gz",skip = 3)
+rows_heart <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047854_heart_lv_SM-JF1NY_features.txt.gz")
+cols_heart<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047854_heart_lv_SM-JF1NY_barcodes.txt.gz")
+
+counts_heart2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047853_heart_lv_SM-IOBHO_matrix.mtx.gz",skip = 3)
+rows_heart2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047853_heart_lv_SM-IOBHO_features.txt.gz")
+cols_heart2<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047853_heart_lv_SM-IOBHO_barcodes.txt.gz")
+
+
+heart_H<-sparseMatrix(i=counts_heart[,1],j=counts_heart[,2],x=counts_heart[,3])
+colnames(heart_H)<-cols_heart$V1
+# I have to shrink ranges
+
+heart_H2<-sparseMatrix(i=counts_heart2[,1],j=counts_heart2[,2],x=counts_heart2[,3])
+colnames(heart_H2)<-cols_heart2$V1
+# I have to shrink ranges
+
+
+resize<-StringToGRanges(rows_heart$V1,sep = c(":", "-"))
+end(resize)<-end(resize)-1
+start(resize)<-start(resize)+1
+
+resize2<-StringToGRanges(rows_heart2$V1,sep = c(":", "-"))
+end(resize2)<-end(resize2)-1
+start(resize2)<-start(resize2)+1
+
+row.names(heart_H)<-GRangesToString(resize)
+row.names(heart_H2)<-GRangesToString(resize2)
+
+metadata_human_heart<-metadata_human[metadata_human$tissue=="heart_lv_SM" & metadata_human$ID1=="JF1NY",]
+metadata_human_heart2<-metadata_human[metadata_human$tissue=="heart_lv_SM" & metadata_human$ID1=="IOBHO",]
+row.names(metadata_human_heart)<-metadata_human_heart$barc
+row.names(metadata_human_heart2)<-metadata_human_heart2$barc
+
+
+human_heart_atac_assay <- CreateChromatinAssay(
+  counts = heart_H,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/Heart_lv_SM-JF1NY_rep1.frags.gz',
+  min.cells = 1
+)
+
+human_heart_atac_assay2 <- CreateChromatinAssay(
+  counts = heart_H2,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/Heart_lv_SM-IOBHO_rep1.frags.gz',
+  min.cells = 1
+)
+
+
+human_heart1_atac <- CreateSeuratObject(
+  counts = human_heart_atac_assay,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_heart
+)
+
+human_heart2_atac <- CreateSeuratObject(
+  counts = human_heart_atac_assay2,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_heart2
+)
+
+#merging heart data
+human_heart_atac<-merge(x=human_heart1_atac,y=human_heart2_atac,add.cell.ids = c("JF1NY","IOBHO"), project = "Heart_merged")
+
+# add the gene information to the object
+Annotation(human_heart_atac) <- annotations_human
+
+
+human_heart_atac <- RunTFIDF(human_heart_atac)
+human_heart_atac <- FindTopFeatures(human_heart_atac, min.cutoff = 'q0')
+human_heart_atac <- RunSVD(human_heart_atac)
+human_heart_atac <- RunUMAP(object = human_heart_atac, reduction = 'lsi', dims = 2:30)
+p1heart<-DimPlot(object = human_heart_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human heart")
+saveRDS(human_heart_atac,file = "Combined_human_heart.rds")
+
+pheart1<-DimPlot(object = human_heart_atac, label = TRUE,group.by = 'ID1')+ggplot2::ggtitle("Human heart")
+
+pheart2<-DimPlot(object = human_heart_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human heart")
+
+pheart2+pheart1
+
+
+human_heart_atac
+
+saveRDS(human_heart_atac,file = "Combined_human_heart.rds")
+
+
+
+```
+
+
+```{r hearth}
+#mm9 mouse
+mouse_M <- readRDS("/brahms/torkenczyk/H_M_storage/matrices/atac_matrix.binary.qc_filtered.rds")
+all_data_m<- read.delim(
+  file = "/brahms/torkenczyk/H_M_storage/cell_metadata.txt",
+ # header = TRUE,
+ # row.names = 1
+)
+
+all_atac_mouse_assay <- CreateChromatinAssay(
+  counts = mouse_M,
+  sep = c("_", "_"),
+  genome = "mm9",
+#  fragments = '',
+#  min.cells = 1
+)
+
+row.names(all_data_m)<-all_data_m$cell
+
+mouse_all_atac <- CreateSeuratObject(
+  counts = all_atac_mouse_assay,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = all_data_m
+)
+
+# extract gene annotations from EnsDb
+annotations_mm9 <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v75)
+
+# change to UCSC style 
+seqlevelsStyle(annotations_mm9) <- 'UCSC'
+genome(annotations_mm9) <- "mm9"
+
+# add the gene information to the object
+Annotation(mouse_all_atac) <- annotations_mm9
+
+#subset to heart
+mouse_heart_atac<-subset(mouse_all_atac,subset = tissue == "Heart")
+
+
+mouse_heart_atac <- RunTFIDF(mouse_heart_atac)
+mouse_heart_atac <- FindTopFeatures(mouse_heart_atac, min.cutoff = 'q0')
+mouse_heart_atac <- RunSVD(mouse_heart_atac)
+mouse_heart_atac <- RunUMAP(object = mouse_heart_atac, reduction = 'lsi', dims = 2:30)
+pm2heart<-DimPlot(object = mouse_heart_atac, label = TRUE,group.by = 'cell_label')+ggplot2::ggtitle("Mouse heart")
+
+saveRDS(mouse_heart_atac,file = "Combined_mouse_heart.rds")
+
+p1heart+pm2heart
+
+```
+
+Lung info
+```{r lung}
+counts_lung1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047856_lung_SM-A62E9_matrix.mtx.gz",skip = 3)
+rows_lung1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047856_lung_SM-A62E9_features.txt.gz")
+cols_lung1<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047856_lung_SM-A62E9_barcodes.txt.gz")
+
+counts_lung2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047857_lung_SM-A8WNH_matrix.mtx.gz",skip = 3)
+rows_lung2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047857_lung_SM-A8WNH_features.txt.gz")
+cols_lung2<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047857_lung_SM-A8WNH_barcodes.txt.gz")
+
+counts_lung3 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047858_lung_SM-ACCPU_matrix.mtx.gz",skip = 3)
+rows_lung3 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047858_lung_SM-ACCPU_features.txt.gz")
+cols_lung3<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047858_lung_SM-ACCPU_barcodes.txt.gz")
+
+counts_lung4 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047859_lung_SM-JF1NZ_matrix.mtx.gz",skip = 3)
+rows_lung4 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047859_lung_SM-JF1NZ_features.txt.gz")
+cols_lung4<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047859_lung_SM-JF1NZ_barcodes.txt.gz")
+
+lung_H1<-sparseMatrix(i=counts_lung1[,1],j=counts_lung1[,2],x=counts_lung1[,3])
+colnames(lung_H1)<-cols_lung1$V1
+
+lung_H2<-sparseMatrix(i=counts_lung2[,1],j=counts_lung2[,2],x=counts_lung2[,3])
+colnames(lung_H2)<-cols_lung2$V1
+
+lung_H3<-sparseMatrix(i=counts_lung3[,1],j=counts_lung3[,2],x=counts_lung3[,3])
+colnames(lung_H3)<-cols_lung3$V1
+
+lung_H4<-sparseMatrix(i=counts_lung4[,1],j=counts_lung4[,2],x=counts_lung4[,3])
+colnames(lung_H4)<-cols_lung4$V1
+
+
+#lung1
+resize1<-StringToGRanges(rows_lung1$V1,sep = c(":", "-"))
+end(resize1)<-end(resize1)-1
+start(resize1)<-start(resize1)+1
+row.names(lung_H1)<-GRangesToString(resize1)
+
+#lung2
+resize2<-StringToGRanges(rows_lung2$V1,sep = c(":", "-"))
+end(resize2)<-end(resize2)-1
+start(resize2)<-start(resize2)+1
+row.names(lung_H2)<-GRangesToString(resize2)
+
+#lung3
+resize3<-StringToGRanges(rows_lung3$V1,sep = c(":", "-"))
+end(resize3)<-end(resize3)-1
+start(resize3)<-start(resize3)+1
+row.names(lung_H3)<-GRangesToString(resize3)
+
+#lung4
+resize4<-StringToGRanges(rows_lung4$V1,sep = c(":", "-"))
+end(resize4)<-end(resize4)-1
+start(resize4)<-start(resize4)+1
+row.names(lung_H4)<-GRangesToString(resize4)
+
+
+metadata_human_lung1<-metadata_human[metadata_human$tissue=="lung_SM" & metadata_human$ID1=="A62E9",]
+metadata_human_lung2<-metadata_human[metadata_human$tissue=="lung_SM" & metadata_human$ID1=="A8WNH",]
+metadata_human_lung3<-metadata_human[metadata_human$tissue=="lung_SM" & metadata_human$ID1=="ACCPU",]
+metadata_human_lung4<-metadata_human[metadata_human$tissue=="lung_SM" & metadata_human$ID1=="JF1NZ",]
+
+
+row.names(metadata_human_lung1)<-metadata_human_lung1$barc
+row.names(metadata_human_lung2)<-metadata_human_lung2$barc
+row.names(metadata_human_lung3)<-metadata_human_lung3$barc
+row.names(metadata_human_lung4)<-metadata_human_lung4$barc
+
+
+human_lung_atac_assay1 <- CreateChromatinAssay(
+  counts = lung_H1,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/lung_SM-A62E9_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_lung_atac_assay2 <- CreateChromatinAssay(
+  counts = lung_H2,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/lung_SM-A8WNH_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_lung_atac_assay3 <- CreateChromatinAssay(
+  counts = lung_H3,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/lung_SM-ACCPU_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_lung_atac_assay4 <- CreateChromatinAssay(
+  counts = lung_H4,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/lung_SM-JF1NZ_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_lung1_atac <- CreateSeuratObject(
+  counts = human_lung_atac_assay1,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_lung1
+)
+
+human_lung2_atac <- CreateSeuratObject(
+  counts = human_lung_atac_assay2,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_lung2
+)
+
+human_lung3_atac <- CreateSeuratObject(
+  counts = human_lung_atac_assay3,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_lung3
+)
+
+human_lung4_atac <- CreateSeuratObject(
+  counts = human_lung_atac_assay4,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_lung4
+)
+
+
+#merging lung data
+human_lung_atac<-merge(x=human_lung1_atac,y=c(human_lung2_atac,human_lung3_atac,human_lung4_atac),add.cell.ids = c("A62E9","A8WNH","ACCPU","JF1NZ"), project = "Lung_merged")
+
+# add the gene information to the object
+Annotation(human_lung_atac) <- annotations_human
+
+human_lung_atac <- RunTFIDF(human_lung_atac)
+human_lung_atac <- FindTopFeatures(human_lung_atac, min.cutoff = 'q0')
+human_lung_atac <- RunSVD(human_lung_atac)
+human_lung_atac <- RunUMAP(object = human_lung_atac, reduction = 'lsi', dims = 2:30)
+
+plung1<-DimPlot(object = human_lung_atac, label = TRUE,group.by = 'ID1')+ggplot2::ggtitle("Human lung")
+
+plung2<-DimPlot(object = human_lung_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human lung")
+
+plung2+plung1
+
+saveRDS(human_lung_atac,file = "Combined_human_lung.rds")
+
+#subset to lung
+mouse_lung_atac<-subset(mouse_all_atac,subset = tissue == "Lung")
+
+
+mouse_lung_atac <- RunTFIDF(mouse_lung_atac)
+mouse_lung_atac <- FindTopFeatures(mouse_lung_atac, min.cutoff = 'q0')
+mouse_lung_atac <- RunSVD(mouse_lung_atac)
+mouse_lung_atac <- RunUMAP(object = mouse_lung_atac, reduction = 'lsi', dims = 2:30)
+plung3<-DimPlot(object = mouse_lung_atac, label = TRUE,group.by = 'cell_label')+ggplot2::ggtitle("Mouse lung")
+
+plung2+plung3
+
+saveRDS(mouse_lung_atac,file = "Combined_mouse_lung.rds")
+```
+
+
+
+#colon sigmoid
+```{r colons}
+counts_colsig1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047835_colon_sigmoid_SM-AZPYO_matrix.mtx.gz",skip = 3)
+rows_colsig1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047835_colon_sigmoid_SM-AZPYO_features.txt.gz")
+cols_colsig1<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047835_colon_sigmoid_SM-AZPYO_barcodes.txt.gz")
+
+counts_colsig2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047836_colon_sigmoid_SM-JF1O8_matrix.mtx.gz",skip = 3)
+rows_colsig2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047836_colon_sigmoid_SM-JF1O8_features.txt.gz")
+cols_colsig2<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047836_colon_sigmoid_SM-JF1O8_barcodes.txt.gz")
+
+colsig_H1<-sparseMatrix(i=counts_colsig1[,1],j=counts_colsig1[,2],x=counts_colsig1[,3])
+colnames(colsig_H1)<-cols_colsig1$V1
+
+colsig_H2<-sparseMatrix(i=counts_colsig2[,1],j=counts_colsig2[,2],x=counts_colsig2[,3])
+colnames(colsig_H2)<-cols_colsig2$V1
+
+#colsig1
+resize1<-StringToGRanges(rows_colsig1$V1,sep = c(":", "-"))
+end(resize1)<-end(resize1)-1
+start(resize1)<-start(resize1)+1
+row.names(colsig_H1)<-GRangesToString(resize1)
+
+#colsig2
+resize2<-StringToGRanges(rows_colsig2$V1,sep = c(":", "-"))
+end(resize2)<-end(resize2)-1
+start(resize2)<-start(resize2)+1
+row.names(colsig_H2)<-GRangesToString(resize2)
+
+metadata_human_colsig1<-metadata_human[metadata_human$tissue=="colon_sigmoid_SM" & metadata_human$ID1=="AZPYO",]
+metadata_human_colsig2<-metadata_human[metadata_human$tissue=="colon_sigmoid_SM" & metadata_human$ID1=="JF1O8",]
+
+row.names(metadata_human_colsig1)<-metadata_human_colsig1$barc
+row.names(metadata_human_colsig2)<-metadata_human_colsig2$barc
+
+human_colsig_atac_assay1 <- CreateChromatinAssay(
+  counts = colsig_H1,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/colon_sigmoid_SM-AZPYO_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_colsig_atac_assay2 <- CreateChromatinAssay(
+  counts = colsig_H2,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/colon_sigmoid_SM-JF1O8_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+
+
+human_colsig1_atac <- CreateSeuratObject(
+  counts = human_colsig_atac_assay1,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_colsig1
+)
+
+human_colsig2_atac <- CreateSeuratObject(
+  counts = human_colsig_atac_assay2,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_colsig2
+)
+
+#merging colsig data
+human_colsig_atac<-merge(x=human_colsig1_atac,y=human_colsig2_atac,add.cell.ids = c("AZPYO","JF1O8"), project = "colsig_merged")
+
+# add the gene information to the object
+Annotation(human_colsig_atac) <- annotations_human
+
+human_colsig_atac <- RunTFIDF(human_colsig_atac)
+human_colsig_atac <- FindTopFeatures(human_colsig_atac, min.cutoff = 'q0')
+human_colsig_atac <- RunSVD(human_colsig_atac)
+human_colsig_atac <- RunUMAP(object = human_colsig_atac, reduction = 'lsi', dims = 2:30)
+
+pcolsig1<-DimPlot(object = human_colsig_atac, label = TRUE,group.by = 'ID1')+ggplot2::ggtitle("Human colsig")
+
+pcolsig2<-DimPlot(object = human_colsig_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human colsig")
+
+saveRDS(human_colsig_atac,file = "Combined_colon_sigmoid.rds")
+
+pcolsig1+pcolsig2
+```
+
+
+#colon transverse
+```{r colont}
+counts_coltras1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047839_colon_transverse_SM-ACCQ1_matrix.mtx.gz",skip = 3)
+rows_coltras1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047839_colon_transverse_SM-ACCQ1_features.txt.gz")
+cols_coltras1<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047839_colon_transverse_SM-ACCQ1_barcodes.txt.gz")
+
+counts_coltras2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047837_colon_transverse_SM-A9HOW_matrix.mtx.gz",skip = 3)
+rows_coltras2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047837_colon_transverse_SM-A9HOW_features.txt.gz")
+cols_coltras2<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047837_colon_transverse_SM-A9HOW_barcodes.txt.gz")
+
+counts_coltras3 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047838_colon_transverse_SM-A9VP4_matrix.mtx.gz",skip = 3)
+rows_coltras3 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047838_colon_transverse_SM-A9VP4_features.txt.gz")
+cols_coltras3<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047838_colon_transverse_SM-A9VP4_barcodes.txt.gz")
+
+counts_coltras4 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047840_colon_transverse_SM-BZ2ZS_matrix.mtx.gz",skip = 3)
+rows_coltras4 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047840_colon_transverse_SM-BZ2ZS_features.txt.gz")
+cols_coltras4<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047840_colon_transverse_SM-BZ2ZS_barcodes.txt.gz")
+
+counts_coltras5 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047841_colon_transverse_SM-CSSDA_matrix.mtx.gz",skip = 3)
+rows_coltras5 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047841_colon_transverse_SM-CSSDA_features.txt.gz")
+cols_coltras5<-read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047841_colon_transverse_SM-CSSDA_barcodes.txt.gz")
+
+
+
+coltras_H1<-sparseMatrix(i=counts_coltras1[,1],j=counts_coltras1[,2],x=counts_coltras1[,3])
+colnames(coltras_H1)<-cols_coltras1$V1
+
+coltras_H2<-sparseMatrix(i=counts_coltras2[,1],j=counts_coltras2[,2],x=counts_coltras2[,3])
+colnames(coltras_H2)<-cols_coltras2$V1
+
+coltras_H3<-sparseMatrix(i=counts_coltras3[,1],j=counts_coltras3[,2],x=counts_coltras3[,3])
+colnames(coltras_H3)<-cols_coltras3$V1
+
+coltras_H4<-sparseMatrix(i=counts_coltras4[,1],j=counts_coltras4[,2],x=counts_coltras4[,3])
+colnames(coltras_H4)<-cols_coltras4$V1
+
+coltras_H5<-sparseMatrix(i=counts_coltras5[,1],j=counts_coltras5[,2],x=counts_coltras5[,3])
+colnames(coltras_H5)<-cols_coltras5$V1
+
+
+#coltras1
+resize1<-StringToGRanges(rows_coltras1$V1,sep = c(":", "-"))
+end(resize1)<-end(resize1)-1
+start(resize1)<-start(resize1)+1
+row.names(coltras_H1)<-GRangesToString(resize1)
+
+#coltras2
+resize2<-StringToGRanges(rows_coltras2$V1,sep = c(":", "-"))
+end(resize2)<-end(resize2)-1
+start(resize2)<-start(resize2)+1
+row.names(coltras_H2)<-GRangesToString(resize2)
+
+#coltras3
+resize3<-StringToGRanges(rows_coltras3$V1,sep = c(":", "-"))
+end(resize3)<-end(resize3)-1
+start(resize3)<-start(resize3)+1
+row.names(coltras_H3)<-GRangesToString(resize3)
+
+#coltras4
+resize4<-StringToGRanges(rows_coltras4$V1,sep = c(":", "-"))
+end(resize4)<-end(resize4)-1
+start(resize4)<-start(resize4)+1
+row.names(coltras_H4)<-GRangesToString(resize4)
+
+#coltras5
+resize5<-StringToGRanges(rows_coltras5$V1,sep = c(":", "-"))
+end(resize5)<-end(resize5)-1
+start(resize5)<-start(resize5)+1
+row.names(coltras_H5)<-GRangesToString(resize5)
+
+
+
+
+
+metadata_human_coltras1<-metadata_human[metadata_human$tissue=="colon_transverse_SM" & metadata_human$ID1=="ACCQ1",]
+metadata_human_coltras2<-metadata_human[metadata_human$tissue=="colon_transverse_SM" & metadata_human$ID1=="A9HOW",]
+metadata_human_coltras3<-metadata_human[metadata_human$tissue=="colon_transverse_SM" & metadata_human$ID1=="A9VP4",]
+metadata_human_coltras4<-metadata_human[metadata_human$tissue=="colon_transverse_SM" & metadata_human$ID1=="BZ2ZS",]
+metadata_human_coltras5<-metadata_human[metadata_human$tissue=="colon_transverse_SM" & metadata_human$ID1=="CSSDA",]
+
+
+
+
+row.names(metadata_human_coltras1)<-metadata_human_coltras1$barc
+row.names(metadata_human_coltras2)<-metadata_human_coltras2$barc
+row.names(metadata_human_coltras3)<-metadata_human_coltras3$barc
+row.names(metadata_human_coltras4)<-metadata_human_coltras4$barc
+row.names(metadata_human_coltras5)<-metadata_human_coltras5$barc
+
+human_coltras_atac_assay1 <- CreateChromatinAssay(
+  counts = coltras_H1,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/colon_transverse_SM-ACCQ1_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_coltras_atac_assay2 <- CreateChromatinAssay(
+  counts = coltras_H2,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/colon_transverse_SM-A9HOW_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_coltras_atac_assay3 <- CreateChromatinAssay(
+  counts = coltras_H3,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/colon_transverse_SM-A9VP4_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_coltras_atac_assay4 <- CreateChromatinAssay(
+  counts = coltras_H4,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/colon_transverse_SM-BZ2ZS_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_coltras_atac_assay5 <- CreateChromatinAssay(
+  counts = coltras_H5,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/colon_transverse_SM-CSSDA_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_coltras_atac1 <- CreateSeuratObject(
+  counts = human_coltras_atac_assay1,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_coltras1
+)
+
+human_coltras_atac2 <- CreateSeuratObject(
+  counts = human_coltras_atac_assay2,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_coltras2
+)
+
+human_coltras_atac3 <- CreateSeuratObject(
+  counts = human_coltras_atac_assay3,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_coltras3
+)
+
+human_coltras_atac4 <- CreateSeuratObject(
+  counts = human_coltras_atac_assay4,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_coltras4
+)
+
+human_coltras_atac5 <- CreateSeuratObject(
+  counts = human_coltras_atac_assay5,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_coltras5
+)
+
+
+#merging coltras data
+human_coltras_atac<-merge(x=human_coltras_atac1,y=c(human_coltras_atac2,human_coltras_atac3,human_coltras_atac4,human_coltras_atac5),add.cell.ids = c("ACCQ1","A9HOW","A9VP4","BZ2ZS","CSSDA"), project = "coltras_merged")
+
+# add the gene information to the object
+Annotation(human_coltras_atac) <- annotations_human
+
+human_coltras_atac <- RunTFIDF(human_coltras_atac)
+human_coltras_atac <- FindTopFeatures(human_coltras_atac, min.cutoff = 'q0')
+human_coltras_atac <- RunSVD(human_coltras_atac)
+human_coltras_atac <- RunUMAP(object = human_coltras_atac, reduction = 'lsi', dims = 2:30)
+
+pcoltras1<-DimPlot(object = human_coltras_atac, label = TRUE,group.by = 'ID1')+ggplot2::ggtitle("Human coltras")
+
+pcoltras2<-DimPlot(object = human_coltras_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human coltras")
+
+pcoltras1+pcoltras2
+
+saveRDS(human_coltras_atac,file = "Combined_colon_transv.rds")
+
+#MYH11,CARMN,VIM,ACTA2,DES
+
+human_coltras_atac<-AddMetaData(human_coltras_atac,intclust)
+human_colsig_atac<-AddMetaData(human_colsig_atac,intclust)
+human_colon_atac<-AddMetaData(human_colon_atac,intclust)
+human_colon_atac$integratedclusterid [which(is.na(human_colon_atac$integratedclusterid))]<-"unknown"
+
+
+human_test1<-CoveragePlot(
+  object = human_coltras_atac,region = 'DES',group.by = 'integratedclusterid',idents = c("Cluster_18","Cluster_0","Cluster_2","Cluster_5","Cluster_15"),
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)
+
+human_test1c<-CoveragePlot(
+  object = human_colsig_atac,region = 'DES',group.by = 'integratedclusterid',idents = c("Cluster_18","Cluster_0","Cluster_2","Cluster_5"),
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)
+
+
+
+Annotation(human_colon_atac)<-annotations_human
+human_test1b<-CoveragePlot(
+  object = human_colon_atac,region = 'DES',group.by = 'integratedclusterid',idents = c("Cluster_18","Cluster_0","Cluster_2","Cluster_5","Cluster_15"),
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)
+
+
+#subset to Large intestine
+mouse_colon_atac<-subset(mouse_all_atac,subset = tissue == "LargeIntestine")
+
+
+mouse_colon_atac <- RunTFIDF(mouse_colon_atac)
+mouse_colon_atac <- FindTopFeatures(mouse_colon_atac, min.cutoff = 'q0')
+mouse_colon_atac <- RunSVD(mouse_colon_atac)
+mouse_colon_atac <- RunUMAP(object = mouse_colon_atac, reduction = 'lsi', dims = 2:30)
+pcolon3<-DimPlot(object = mouse_colon_atac, label = TRUE,group.by = 'cell_label')+ggplot2::ggtitle("Mouse colon")
+
+#merging coltras data
+human_colon_atac<-merge(x=human_coltras_atac1,y=c(human_coltras_atac2,human_coltras_atac3,human_coltras_atac4,human_coltras_atac5,human_colsig1_atac,human_colsig2_atac),add.cell.ids = c("ACCQ1","A9HOW","A9VP4","BZ2ZS","CSSDA","AZPYO","JF1O8"), project = "colon_merged")
+
+human_colon_atac <- RunTFIDF(human_colon_atac)
+human_colon_atac <- FindTopFeatures(human_colon_atac, min.cutoff = 'q0')
+human_colon_atac <- RunSVD(human_colon_atac)
+human_colon_atac <- RunUMAP(object = human_colon_atac, reduction = 'lsi', dims = 2:30)
+
+pcolon1<-DimPlot(object = human_colon_atac, label = TRUE,group.by = 'ID1')+ggplot2::ggtitle("Human colon")
+pcolon2a<-DimPlot(object = human_colon_atac, label = TRUE,group.by = 'tissue')+ggplot2::ggtitle("Human colon")
+pcolon2b<-DimPlot(object = human_colon_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human colon")
+
+pcolon1+pcolon2a
+
+pcolon2+pcolon3
+saveRDS(human_colon_atac,file = "Combined_human_colon.rds")
+saveRDS(mouse_colon_atac,file = "Combined_mouse_colon.rds")
+```
+
+#small intestine
+```{r colont}
+counts_smintest1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047881_small_intestine_SM-A62GO_matrix.mtx.gz",skip = 3)
+rows_smintest1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047881_small_intestine_SM-A62GO_features.txt.gz")
+cols_smintest1 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047881_small_intestine_SM-A62GO_barcodes.txt.gz")
+
+counts_smintest2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047882_small_intestine_SM-ADA5F_matrix.mtx.gz",skip = 3)
+rows_smintest2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047882_small_intestine_SM-ADA5F_features.txt.gz")
+cols_smintest2 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047882_small_intestine_SM-ADA5F_barcodes.txt.gz")
+
+counts_smintest3 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047883_small_intestine_SM-JF1O2_matrix.mtx.gz",skip = 3)
+rows_smintest3 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047883_small_intestine_SM-JF1O2_features.txt.gz")
+cols_smintest3 <- read.table("/brahms/torkenczyk/H_M_storage/matricesGSM5047883_small_intestine_SM-JF1O2_barcodes.txt.gz")
+
+smintest_H1<-sparseMatrix(i=counts_smintest1[,1],j=counts_smintest1[,2],x=counts_smintest1[,3])
+colnames(smintest_H1)<-cols_smintest1$V1
+
+smintest_H2<-sparseMatrix(i=counts_smintest2[,1],j=counts_smintest2[,2],x=counts_smintest2[,3])
+colnames(smintest_H2)<-cols_smintest2$V1
+
+smintest_H3<-sparseMatrix(i=counts_smintest3[,1],j=counts_smintest3[,2],x=counts_smintest3[,3])
+colnames(smintest_H3)<-cols_smintest3$V1
+
+#smintest1
+resize1<-StringToGRanges(rows_smintest1$V1,sep = c(":", "-"))
+end(resize1)<-end(resize1)-1
+start(resize1)<-start(resize1)+1
+row.names(smintest_H1)<-GRangesToString(resize1)
+
+#smintest2
+resize2<-StringToGRanges(rows_smintest2$V1,sep = c(":", "-"))
+end(resize2)<-end(resize2)-1
+start(resize2)<-start(resize2)+1
+row.names(smintest_H2)<-GRangesToString(resize2)
+
+#smintest
+resize3<-StringToGRanges(rows_smintest3$V1,sep = c(":", "-"))
+end(resize3)<-end(resize3)-1
+start(resize3)<-start(resize3)+1
+row.names(smintest_H3)<-GRangesToString(resize3)
+
+
+metadata_human_smintest1<-metadata_human[metadata_human$tissue=="small_intestine_SM" & metadata_human$ID1=="A62GO",]
+metadata_human_smintest2<-metadata_human[metadata_human$tissue=="small_intestine_SM" & metadata_human$ID1=="ADA5F",]
+metadata_human_smintest3<-metadata_human[metadata_human$tissue=="small_intestine_SM" & metadata_human$ID1=="JF1O2",]
+
+
+
+row.names(metadata_human_smintest1)<-metadata_human_smintest1$barc
+row.names(metadata_human_smintest2)<-metadata_human_smintest2$barc
+row.names(metadata_human_smintest3)<-metadata_human_smintest3$barc
+
+human_smintest_atac_assay1 <- CreateChromatinAssay(
+  counts = smintest_H1,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/small_intestine_SM-A62GO_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_smintest_atac_assay2 <- CreateChromatinAssay(
+  counts = smintest_H2,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/small_intestine_SM-ADA5F_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+human_smintest_atac_assay3 <- CreateChromatinAssay(
+  counts = smintest_H3,
+  sep = c(":", "-"),
+  genome = "hg38",
+  fragments = '/brahms/torkenczyk/H_M_storage/analysis/frags/human/small_intestine_SM-JF1O2_rep1_fragments.bed.gz.frags.gz',
+  min.cells = 1
+)
+
+
+human_smintest_atac1 <- CreateSeuratObject(
+  counts = human_smintest_atac_assay1,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_smintest1
+)
+
+human_smintest_atac2 <- CreateSeuratObject(
+  counts = human_smintest_atac_assay2,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_smintest2
+)
+
+human_smintest_atac3 <- CreateSeuratObject(
+  counts = human_smintest_atac_assay3,
+  assay = 'peaks',
+  project = 'ATAC',
+  meta.data = metadata_human_smintest3
+)
+
+#merging smintest data
+human_smintest_atac<-merge(x=human_smintest_atac1,y=c(human_smintest_atac2,human_smintest_atac3),add.cell.ids = c("A62GO","ADA5F","JF1O2"), project = "smintest_merged")
+
+# add the gene information to the object
+Annotation(human_smintest_atac) <- annotations_human
+
+human_smintest_atac <- RunTFIDF(human_smintest_atac)
+human_smintest_atac <- FindTopFeatures(human_smintest_atac, min.cutoff = 'q0')
+human_smintest_atac <- RunSVD(human_smintest_atac)
+human_smintest_atac <- RunUMAP(object = human_smintest_atac, reduction = 'lsi', dims = 2:30)
+
+psmintest1<-DimPlot(object = human_smintest_atac, label = TRUE,group.by = 'ID1')+ggplot2::ggtitle("Human small intestine")
+
+psmintest2<-DimPlot(object = human_smintest_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human small intestine")
+
+
+saveRDS(human_smintest_atac,file = "Human_small_intestine.rds")
+# now mouse
+#subset to Large intestine
+mouse_smintest_atac<-subset(mouse_select_atac,subset = tissue == "SmallIntestine")
+
+
+mouse_smintest_atac <- RunTFIDF(mouse_smintest_atac)
+mouse_smintest_atac <- FindTopFeatures(mouse_smintest_atac, min.cutoff = 'q0')
+mouse_smintest_atac <- RunSVD(mouse_smintest_atac)
+mouse_smintest_atac <- RunUMAP(object = mouse_smintest_atac, reduction = 'lsi', dims = 2:30)
+psmintest3<-DimPlot(object = mouse_smintest_atac, label = TRUE,group.by = 'cell_label')+ggplot2::ggtitle("Mouse small intestine")
+
+# now mouse
+saveRDS(mouse_smintest_atac,file = "Mouse_small_intestine.rds")
+
+
+psmintest3+psmintest2
+```
+#combined different tissues
+
+```{r}
+human_liver_atac<-readRDS("./Human_liver.rds")
+#human_colon_atac<-readRDS("./Combined_human_colon.rds")
+human_colsig_atac<-readRDS("Combined_colon_sigmoid.rds")
+human_coltras_atac<-readRDS("Combined_colon_transv.rds")
+human_heart_atac<-readRDS("./Combined_human_heart.rds")
+human_lung_atac<-readRDS("./Combined_human_lung.rds")
+human_smintest_atac<-readRDS("./Human__small_intestine.rds")
+human_all_atac<-merge(x=human_coltras_atac,y=c(human_colsig_atac,human_liver_atac,human_smintest_atac,human_heart_atac,human_lung_atac),add.cell.ids = c("coltras","colsig","liver","smiltest","heart","lung"), project = "ALL_human_merged")
+
+human_all_atac <- RunTFIDF(human_all_atac)
+human_all_atac <- FindTopFeatures(human_all_atac, min.cutoff = 1500)
+human_all_atac <- RunSVD(human_all_atac,n = 100)
+DepthCor(human_all_atac)
+human_all_atac <- RunUMAP(object = human_all_atac, reduction = 'lsi', dims = 2:30)
+
+pall1human<-DimPlot(object = human_all_atac, label = TRUE,group.by = 'ID1')+ggplot2::ggtitle("Human select tissues")
+
+pall2human<-DimPlot(object = human_all_atac, label = TRUE,group.by = 'Cell.Type')+ggplot2::ggtitle("Human select tissues")
+
+pall3human<-DimPlot(object = human_all_atac, label = TRUE,group.by = 'tissue')+ggplot2::ggtitle("Human select tissues")
+
+
+# this is all combined human tissues
+saveRDS(human_all_atac,file = "/brahms/torkenczyk/H_M_storage/analysis/objects/All_human_tissues.rds")
+```
+#add in cre information
+
+```{r}
+#create the assay wit the actual called peaks
+
+peaks.human.cisE.all<-read.table("/brahms/torkenczyk/H_M_storage/cCRE_Accessibility.tsv.gz")
+peaks.human.cisE<-row.names(peaks.human.cisE.all)
+
+human_granges.cisE<-reduce(StringToGRanges(peaks.human.cisE,sep = c(":","-")))
+
+cRE_peaks_human<- FeatureMatrix(
+  fragments = Fragments(human_all_atac),
+  features = human_granges.cisE,
+  cells = row.names(human_all_atac[[]])
+)
+
+
+cre_assay <- CreateChromatinAssay(
+  counts = cRE_peaks_human,
+  genome = "hg38",
+  ranges = human_granges.cisE,
+)
+
+human_all_atac[['cre']]<-cre_assay
+DefaultAssay(human_all_atac)<-"cre"
+Annotation(human_all_atac)<-annotations_human
+
+saveRDS(human_all_atac,file = "/brahms/torkenczyk/H_M_storage/analysis/objects/All_human_tissues.rds")
+
+```
+
+#create mouse tissues
+```{r}
+#plotting 
+
+DefaultAssay(human_all_atac)<-"peaks"
+Hfrags<-Fragments(human_all_atac)
+DefaultAssay(human_all_atac)<-"cre"
+Fragments(human_all_atac)<-Hfrags
+human_all_atac
+
+DefaultAssay(mouse_select_atac)<-"humanPeaks"
+fragpath_M<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/ALL_tissues.srt.tsv.gz'
+frags_M<- CreateFragmentObject(path = fragpath_M, cells = colnames(mouse_select_atac),validate.fragments = T)
+Fragments(mouse_select_atac)=frags_M
+
+DefaultAssay(mouse_select_atac)<-"peaks"
+
+fragpath_1<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/LargeIntestineA_62816.mm9.sinto.fragments.srt.tsv.gz'
+fragpath_2<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/LargeIntestineB_62816.mm9.sinto.fragments.srt.tsv.gz'
+fragpath_3<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/SmallIntestine_62816.mm9.sinto.fragments.srt.tsv.gz'
+fragpath_4<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Lung1_62216.mm9.sinto.fragments.srt.tsv.gz'
+fragpath_5<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Lung2_62216.mm9.sinto.fragments.srt.tsv.gz'
+fragpath_6<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Liver_62016.mm9.sinto.fragments.srt.tsv.gz'
+fragpath_7<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/HeartA_62816.mm9.sinto.fragments.srt.tsv.gz'
+frags_1<- CreateFragmentObject(path = fragpath_1,cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="LargeIntestineA_62816"] ,validate.fragments = T)
+frags_2<- CreateFragmentObject(path = fragpath_2, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="LargeIntestineB_62816"],validate.fragments = T)
+frags_3<- CreateFragmentObject(path = fragpath_3, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="SmallIntestine_62816"],validate.fragments = T)
+frags_4<- CreateFragmentObject(path = fragpath_4, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Lung1_62216"],validate.fragments = T)
+frags_5<- CreateFragmentObject(path = fragpath_5, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Lung2_62216"],validate.fragments = T)
+frags_6<- CreateFragmentObject(path = fragpath_6, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Liver_62016"],validate.fragments = T)
+frags_7<- CreateFragmentObject(path = fragpath_7, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="HeartA_62816"],validate.fragments = T)
+mm9_frags<-list(frags_1,frags_2,frags_3,frags_4,frags_5,frags_6,frags_7)
+
+DefaultAssay(mouse_select_atac)<-"peaks"
+Fragments(mouse_select_atac)<-mm9_frags
+
+
+#for mm10 
+
+fragpath_1<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/LargeIntestineA_62816.mm10.sinto.fragments.0.99.srt.tsv.gz'
+fragpath_2<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/LargeIntestineB_62816.mm10.sinto.fragments.0.99.srt.tsv.gz'
+fragpath_3<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/SmallIntestine_62816.mm10.sinto.fragments.0.99.srt.tsv.gz'
+fragpath_4<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Lung1_62216.mm10.sinto.fragments.0.99.srt.tsv.gz'
+fragpath_5<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Lung2_62216.mm10.sinto.fragments.0.99.srt.tsv.gz'
+fragpath_6<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Liver_62016.mm10.sinto.fragments.0.99.srt.tsv.gz'
+fragpath_7<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/HeartA_62816.mm9.sinto.fragments.mm10.srt.tsv.gz'
+frags_1<- CreateFragmentObject(path = fragpath_1,cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="LargeIntestineA_62816"] ,validate.fragments = T)
+frags_2<- CreateFragmentObject(path = fragpath_2, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="LargeIntestineB_62816"],validate.fragments = T)
+frags_3<- CreateFragmentObject(path = fragpath_3, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="SmallIntestine_62816"],validate.fragments = T)
+frags_4<- CreateFragmentObject(path = fragpath_4, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Lung1_62216"],validate.fragments = T)
+frags_5<- CreateFragmentObject(path = fragpath_5, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Lung2_62216"],validate.fragments = T)
+frags_6<- CreateFragmentObject(path = fragpath_6, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Liver_62016"],validate.fragments = T)
+frags_7<- CreateFragmentObject(path = fragpath_7, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="HeartA_62816"],validate.fragments = T)
+
+
+mm10_frags2<-list(frags_1,frags_2,frags_3,frags_4,frags_5,frags_6,frags_7)
+
+
+DefaultAssay(mouse_select_atac)<-'peaks'
+
+write.table(as.data.frame(str_split_fixed(row.names(mouse_select_atac),n=3,pattern = "-")),file = "Mouse_all_peaks_mm9.bed",quote = F,sep="\t",row.names = F,col.names = F)
+mm10_peaks<-read.table("Mouse_all_peaks_mm10.srt.bed",header = F)
+mm10_peaks_str<-paste(mm10_peaks$V1,mm10_peaks$V2,mm10_peaks$V3,sep = "-")
+mm10_peaks_granges<-StringToGRanges(mm10_peaks_str)
+
+
+library(future)
+plan()
+plan("multiprocess", workers = 8)
+plan()
+options(future.globals.maxSize = 80 * 1024 ^ 3) # for 50 Gb RAM
+
+
+cRE_peaks_mm10<- FeatureMatrix(
+  fragments = mm10_frags,
+  features = mm10_peaks_granges,
+  cells = row.names(mouse_select_atac[[]])
+)
+
+
+
+# I did not quantify but could technically call peaks -> just did
+
+
+# extract gene annotations from EnsDb
+annotations_mouse_mm10 <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+# change to UCSC style since the data was mapped to mm10
+seqlevelsStyle(annotations_mouse_mm10) <- 'UCSC'
+genome(annotations_mouse_mm10) <- "mm10"
+
+
+mouse_select_atac[["mm10"]]<-CreateChromatinAssay(
+  counts = cRE_peaks_mm10,
+  genome = "mm10",
+  ranges = mm10_peaks_granges,min.cells = 1,fragments = mm10_frags,annotation = annotations_mouse_mm10
+)
+
+DefaultAssay(mouse_select_atac)<-"mm10"
+
+##Fragments(mouse_select_atac)<-NULL
+#Fragments(mouse_select_atac)<-mm10_frags2
+
+#for hg38
+
+fragpath_1<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/LargeIntestineA_62816.mm9.sinto.fragments.srt.hg38.0.99.srt.tsv.gz'
+fragpath_2<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/LargeIntestineB_62816.mm9.sinto.fragments.srt.hg38.0.99.srt.tsv.gz'
+fragpath_3<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/SmallIntestine_62816.mm9.sinto.fragments.srt.hg38.0.99.srt.tsv.gz'
+fragpath_4<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Lung1_62216.mm9.sinto.fragments.srt.0.99.srt.tsv.gz'
+fragpath_5<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Lung2_62216.mm9.sinto.fragments.srt.0.99.srt.tsv.gz'
+fragpath_6<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/Liver_62016.mm9.sinto.fragments.srt.0.99.srt.tsv.gz'
+fragpath_7<-'/brahms/torkenczyk/H_M_storage/analysis/frags/mouse/HeartA_62816.mm9.sinto.fragments.srt.hg38.0.99.srt.tsv.gz'
+frags_1<- CreateFragmentObject(path = fragpath_1,cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="LargeIntestineA_62816"] ,validate.fragments = T)
+frags_2<- CreateFragmentObject(path = fragpath_2, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="LargeIntestineB_62816"],validate.fragments = T)
+frags_3<- CreateFragmentObject(path = fragpath_3, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="SmallIntestine_62816"],validate.fragments = T)
+frags_4<- CreateFragmentObject(path = fragpath_4, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Lung1_62216"],validate.fragments = T)
+frags_5<- CreateFragmentObject(path = fragpath_5, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Lung2_62216"],validate.fragments = T)
+frags_6<- CreateFragmentObject(path = fragpath_6, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="Liver_62016"],validate.fragments = T)
+frags_7<- CreateFragmentObject(path = fragpath_7, cells = mouse_select_atac$cell[mouse_select_atac$tissue.replicate=="HeartA_62816"],validate.fragments = T)
+
+
+hg3899_frags<-list(frags_1,frags_2,frags_3,frags_4,frags_5,frags_6,frags_7)
+
+
+peaks.human.cisE.all<-read.table("/brahms/torkenczyk/H_M_storage/cCRE_Accessibility.tsv.gz")
+peaks.human.cisE<-row.names(peaks.human.cisE.all)
+human_granges.cisE<-reduce(StringToGRanges(peaks.human.cisE,sep = c(":","-")))
+
+cRE_peaks_hg3899<- FeatureMatrix(
+  fragments = hg3899_frags,
+  features = human_granges.cisE,
+  cells = row.names(mouse_select_atac[[]])
+)
+
+
+# extract gene annotations from EnsDb
+annotations_human <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+# change to UCSC style since the data was mapped to hg19
+seqlevelsStyle(annotations_human) <- 'UCSC'
+genome(annotations_human) <- "hg38"
+
+
+mouse_select_atac[["cre99"]] <- CreateChromatinAssay(
+  counts = cRE_peaks_hg3899,
+  genome = "hg38",
+  ranges = StringToGRanges(row.names(cRE_peaks_hg3899)),min.cells = 1,fragments = hg3899_frags,annotation = annotations_human
+)
+
+#MYH6,MYH7
+
+DefaultAssay(mouse_select_atac)<-"humanPeaks"
+MYH6<-CoveragePlot(
+  object = mouse_select_atac,region = 'MYH6',
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)
+
+DefaultAssay(mouse_select_atac)<-"peaks"
+MYH6b<-CoveragePlot(
+  object = mouse_select_atac,#region="chr14-55560758-55585444",
+  region = 'Myh6',
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)+ggtitle("mm9r misannotated")
+
+DefaultAssay(mouse_select_atac)<-"mm10"
+MYH6mm10<-CoveragePlot(
+  object = mouse_select_atac,region = 'Myh7',
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)+ggtitle("mm10real location")
+
+DefaultAssay(mouse_select_atac)<-"mm10"
+MYH6mm10second<-CoveragePlot(
+  object = mouse_select_atac,region = 'Myh6',
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)
+
+DefaultAssay(mouse_select_atac)<-"cre"
+MYH6001<-CoveragePlot(
+  object = mouse_select_atac,region = 'MYH7',
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)+ggtitle("Mouse hg38 location")
+
+DefaultAssay(mouse_select_atac)<-"mm10"
+DefaultAssay(mouse_select_atac)<-"peaks"
+
+#discovere v75 is not actually correct for mm9
+# only UCSC exists so I will attempt to make a suitable one
+
+library(BSgenome.Mmusculus.UCSC.mm9)
+library(Mus.musculus)
+
+annotations_mouse_mm10 <- GetGRangesFromEnsDb(ensdb = b)
+# change to UCSC style since the data was mapped to mm10
+seqlevelsStyle(annotations_mouse_mm10) <- 'UCSC'
+genome(annotations_mouse_mm10) <- "mm10"
+
+frags<-Fragments(human_all_atac)
+Fragments(human_all_atac)<-frags
+DefaultAssay(human_all_atac)<-"cre"
+MYH7H<-CoveragePlot(
+  object = human_all_atac,region = 'MYH7',
+  extend.upstream = 10000,
+  extend.downstream = 10000,annotation=T,peaks=T
+)+ggtitle("Human hg38 location")
+
+MYH6mm10|MYH6001|MYH7H
+saveRDS(mouse_select_atac,file="/brahms/torkenczyk/H_M_storage/analysis/objects/All_mouse_tissues.rds")
+
+
+
+#next lets look at the integration 
+```
+
+
+
+
+
+
+
+
+

@@ -96,8 +96,8 @@ library(ggplot2)
 library(patchwork)
 library(GenomicRanges)
 
-human<-readRDS("active_use_objects/Select_human_tissues.rds")
-mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+human<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_human_tissues.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Select_mouse_tissues.rds")
 
 
 
@@ -105,8 +105,6 @@ human
 mouse
 library(cicero)
 
-human<-readRDS("active_use_objects/Select_human_tissues.rds")
-mouse<-readRDS("active_use_objects/Select_mouse_tissues.rds")
 
 #hg38 human all
 human.cds <- as.cell_data_set(x = human)
@@ -125,8 +123,11 @@ ccans_human <- generate_ccans(conns_human)
 
 
 write.table(ccans_human,file="Human_ccans_cicero.txt",sep = "\t",quote = F,row.names = T,col.names = T)
+```
 
 
+
+```{r}
 DefaultAssay(mouse)<-"mm9"
 #do same for moust but in mm9
 #mouse[["cre"]]<-NULL
@@ -174,7 +175,7 @@ write.table(conns_mouse_mm10,file="Mouse_connections_cicero_mm10.txt",sep = "\t"
 ccans_mouse_mm10 <- generate_ccans(conns_mouse_mm10)
 write.table(ccans_mouse_mm10,file="Mouse_ccans_cicero_mm10.txt",sep = "\t",quote = F,row.names = T,col.names = T)
 
-mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis//active_use_objects/Select_mouse_tissues.rds")
 
 DefaultAssay(mouse)<-"cre"
 mouse[["mm9"]]<-NULL
@@ -192,7 +193,7 @@ write.table(conns_mouse_hg38,file="Mouse_connections_cicero_mm10.txt",sep = "\t"
 ccans_mouse_hg38 <- generate_ccans(conns_mouse_hg38)
 write.table(ccans_mouse_hg38,file="Mouse_ccans_cicero_hg38.txt",sep = "\t",quote = F,row.names = T,col.names = T)
 
-mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis//active_use_objects/Select_mouse_tissues.rds")
 DefaultAssay(mouse)<-"mm9"
 links <- ConnectionsToLinks(conns = conns_mouse, ccans = ccans_mouse)
 Links(mouse) <- links
@@ -202,14 +203,14 @@ Links(mouse) <- links
 DefaultAssay(mouse)<-"cre"
 links <- ConnectionsToLinks(conns = conns_mouse_hg38, ccans = ccans_mouse_hg38)
 Links(mouse) <- links
-saveRDS(mouse,file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Mouse_added_links.rds")
+saveRDS(mouse,file = "/brahms/torkenczyk/H_M_storage/analysis//active_use_objects/Mouse_added_links.rds")
 
 
 
 
-load("active_use_objects/for_rahul/Shared.bw.species.DA.RData")
-load("active_use_objects/for_rahul/Human_only.bw.species.DA.RData")
-load("active_use_objects/for_rahul/Mouse_only.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Shared.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Human_only.bw.species.DA.RData")
+load("/brahms/torkenczyk/H_M_storage/analysis/objects/DA_info/Mouse_only.bw.species.DA.RData")
 
 
 all_human_peaks_in_CCAN<-unique(StringToGRanges(ccans_human$Peak))
@@ -222,7 +223,7 @@ all_peaks_mouse<-unique(StringToGRanges(row.names(mouse)))
 
 links <- ConnectionsToLinks(conns = conns_human, ccans = ccans_human)
 Links(human) <- links
-saveRDS(human,file = "./active_use_objects/Human_added_links.rds")
+saveRDS(human,file = "/brahms/torkenczyk/H_M_storage/analysis/objects/Human_added_links.rds")
 
 
 
@@ -385,11 +386,37 @@ p1<-ggplot(percent_overlap,aes(x=CCAN,fill=group,y=frac))+geom_boxplot()+theme_c
 
 library(ggpubr)
 
+percent_overlap_h<-percent_overlap[percent_overlap$CCAN=="human", ]
+percent_overlap_m<-percent_overlap[percent_overlap$CCAN=="mouse",]
+
+percent_overlap_h2<-data.frame(shared=percent_overlap_h[percent_overlap_h$group=="shared",]$frac,mouse=percent_overlap_h[percent_overlap_h$group=="mouse",]$frac,human=percent_overlap_h[percent_overlap_h$group=="human",]$frac)
+
+
+# Visualize: Specify the comparisons you want
+my_comparisons <- list( c("shared","human"), c("mouse", "shared"))
+p_h_comp<-ggboxplot(percent_overlap_h, x = "group", y = "frac",fill = "group", palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 5)+ylab("Fraction of DA peaks in a CCAN/Fraction of all peaks in a CCAN")
+
+
+#should maybe test paired. same result
+
+p_h_comp<-ggpaired(percent_overlap_h2, cond1 = "shared", cond2 = "human",line.color = "gray", line.size = 0.4)+ 
+  stat_compare_means(paired = T)+ylab("Fraction of DA peaks in a CCAN/Fraction of all peaks in a CCAN")
+
+
+
+p_m_comp<-ggboxplot(percent_overlap_m, x = "group", y = "frac",fill = "group",palette = "jco")+ 
+  stat_compare_means(comparisons = my_comparisons,paired = F)+ # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 5)+ylab("Fraction of DA peaks in a CCAN/Fraction of all peaks in a CCAN")
+
+
+
 # Visualize: Specify the comparisons you want
 my_comparisons <- list( c("human", "shared"), c("mouse", "shared"))
-p2<-ggboxplot(percent_overlap, x = "group", y = "frac",, palette = "jco")+ 
+p_all<-ggboxplot(percent_overlap, x = "group", y = "frac",fill="group", palette = "jco")+ 
   stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
-  stat_compare_means(label.y = 50)+ylab("Fraction of DA peaks in a CCAN/Fraction of all peaks in a CCAN")
+  stat_compare_means(label.y = 11)+ylab("Fraction of DA peaks in a CCAN/Fraction of all peaks in a CCAN")
 
 ggsave(p1,filename = "~/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Comparison_CCAN_shared_unique_CCAN_breakdown.pdf")
 ggsave(p2,filename = "~/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Comparison_CCAN_shared_unique.pdf")
@@ -400,8 +427,8 @@ ggsave(p2,filename = "~/H_M_chromatin_atlas/human_data/plots/paper_pdfs/Comparis
 ```{r}
 #Now lets look at examples with links that are unique
 
-human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data//active_use_objects/Human_added_links.rds")
-mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data//active_use_objects/Mouse_added_links.rds")
+human<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Human_added_links.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Mouse_added_links.rds")
  
 human[["Deviation_DA_mouse"]]<-NULL
 human[["Deviation_DA_human"]]<-NULL
@@ -444,8 +471,8 @@ M2<-Heatmap(t(scale(t(mus))),show_column_names = TRUE,show_row_names = FALSE,clu
 s_h_ccan<-as.data.frame(t(scale(t(hum))))
 s_m_ccan<-as.data.frame(t(scale(t(mus))))
 
-write.table(s_h_ccan,file="/home/torkenczyk/H_M_chromatin_atlas/human_data/Human_ccan.table.txt")
-write.table(s_m_ccan,file="/home/torkenczyk/H_M_chromatin_atlas/human_data/Mouse_ccan.table.txt")
+write.table(s_h_ccan,file="/brahms/torkenczyk/H_M_storage/analysis//Human_ccan.table.txt")
+write.table(s_m_ccan,file="/brahms/torkenczyk/H_M_storage/analysis//Mouse_ccan.table.txt")
 
 
 
@@ -530,8 +557,8 @@ ccan_all_regions<-rbind(ccan_all_regions,ccan_region)
 
 write.table(ccan_all_regions,file="CCAN_human_start_end_hg38.bed",quote = F,row.names = F,col.names = F,sep = "\t")
 #lifted over
-ccan_all_regions_mm10<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/CCAN_human_start_end_mm10.bed",header = F)
-ccan_all_regions_mm9<-read.table("/home/torkenczyk/H_M_chromatin_atlas/human_data/CCAN_human_start_end_mm9.bed",header = F)
+ccan_all_regions_mm10<-read.table("/brahms/torkenczyk/H_M_storage/analysis//CCAN_human_start_end_mm10.bed",header = F)
+ccan_all_regions_mm9<-read.table("/brahms/torkenczyk/H_M_storage/analysis//CCAN_human_start_end_mm9.bed",header = F)
 
 
 master_ccan_df=data.frame(ccan=ccan_all_regions$ccan,region_hg38=paste(ccan_all_regions$chr,ccan_all_regions$start,ccan_all_regions$end,sep = "_"))
@@ -646,12 +673,12 @@ pnumb2<-ggplot(AB_merg,aes(x=h_max,y=number.of.peaks))+geom_point()+theme_classi
 
 #plot some of them
 
-master_ccan_df<-read.delim(file = "/home/torkenczyk/H_M_chromatin_atlas/human_data/CCAN_human_start_end_hg38_mm9_mm10_lift02mathc.txt")
-human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data//active_use_objects/Human_added_links.rds")
-mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data//active_use_objects/Mouse_added_links.rds")
+master_ccan_df<-read.delim(file = "/brahms/torkenczyk/H_M_storage/analysis//CCAN_human_start_end_hg38_mm9_mm10_lift02mathc.txt")
+human<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Human_added_links.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis/objects/Mouse_added_links.rds")
 ccans_mouse_hg38<-read.delim(file="/home/torkenczyk/git_repos/H_M_analysis/Mouse_ccans_cicero_hg38.txt")
 ccans_mouse_mm10<-read.delim(file="/home/torkenczyk/git_repos/H_M_analysis/Mouse_ccans_cicero_mm10.txt")
-ccans_human<-read.delim(file="/home/torkenczyk/H_M_chromatin_atlas/human_data/Human_ccans_cicero.txt")
+ccans_human<-read.delim(file="/brahms/torkenczyk/H_M_storage/analysis//Human_ccans_cicero.txt")
 
 plot_CCAN_species<-function(number=2,ct="Hepatocytes",mincut=0.1,upstr=1000,dstr=1000)
 {
@@ -742,7 +769,7 @@ S<-plot_CCAN_species(number=1,mincut = 0.15,ct = "Smooth.muscle.cells")
 
 
 
-png(filename = paste0("/home/torkenczyk/H_M_chromatin_atlas/human_data/plots/",gene,"_combined.wcons_yaxe_human_VAL=.png"),width = 20,height=28,units = "cm",res=300)
+png(filename = paste0("/brahms/torkenczyk/H_M_storage/analysis//plots/",gene,"_combined.wcons_yaxe_human_VAL=.png"),width = 20,height=28,units = "cm",res=300)
 
 
 
@@ -752,8 +779,8 @@ Might be easy to show GA across mouse and human as shared or unique
 
 ```{r}
 
-human<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_human_tissues.rds")
-mouse<-readRDS("/home/torkenczyk/H_M_chromatin_atlas/human_data/active_use_objects/Select_mouse_tissues.rds")
+human<-readRDS("/brahms/torkenczyk/H_M_storage/analysis//active_use_objects/Select_human_tissues.rds")
+mouse<-readRDS("/brahms/torkenczyk/H_M_storage/analysis//active_use_objects/Select_mouse_tissues.rds")
 
 gene.activities<-GeneActivity(object = human,assay = "cre")
 
@@ -797,7 +824,7 @@ genes_to_plot=c(genes_to_plot,head(sh_genes[[ct]]$gene,n=5))
 
 
 
-p1<-DotPlot(human,features = unique(genes_to_plot))+theme(legend.position="top")+ggtitle(label = "Human")+xlab(label = "")
+p1<-DotPlot(human,features = unique(genes_to_plot))+theme(legend.position="top")+ggtitle(label = "Human")+xlab(label = "")+coord_flip()
 p2<-DotPlot(mouse,features = unique(genes_to_plot))+theme()+theme(legend.position="top")+ggtitle(label = "Mouse") +theme(axis.title.y=element_blank(),axis.text.y=element_blank(), axis.ticks.y=element_blank())+xlab(label = "")
 
 
